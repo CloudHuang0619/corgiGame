@@ -191,7 +191,7 @@ export const Board = memo(function Board({
               aria-label={`第 ${row + 1} 列、第 ${col + 1} 欄，${region} 區，${stateLabel}`}
             >
               {cell === CellState.Corgi && (
-                <Corgi className="cell-corgi" variant={inConflict ? 'conflict' : 'normal'} />
+                <Corgi className="cell-corgi" variant={inConflict ? 'conflict' : 'normal'} animated />
               )}
               {(cell === CellState.Marked || cell === CellState.Wrong) && (
                 <svg
