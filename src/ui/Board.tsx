@@ -173,8 +173,8 @@ export const Board = memo(function Board({
                 inConflict ? 'is-conflict' : '',
                 isHint ? 'is-hint' : '',
                 isLocked ? 'is-locked' : '',
-                // 紅叉點不掉，就不該給它可點擊的回饋
-                cell === CellState.Wrong ? 'is-spent' : '',
+                // 柯基與紅叉都已定案，不該再給可點擊的回饋
+                cell === CellState.Wrong || cell === CellState.Corgi ? 'is-spent' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

@@ -77,37 +77,30 @@ function cloneBoard(board: readonly (readonly CellState[])[]): CellState[][] {
 /**
  * 點擊一格。
  *
- * 循環是 空白 → 叉號 →（嘗試放柯基）→ 空白。第三步會分岔：
- * 位置在正解上就放下柯基，不在就留下紅色叉號並扣一條命。
- * 紅色叉號本身也是有用的資訊 —— 它就是「這裡不可能」的記號。
+ * 循環是 空白 → 叉號 →（嘗試放柯基）。第三步會分岔：位置在正解上就放下
+ * 柯基，不在就留下紅色叉號並扣一條命。
+ *
+ * 兩種結果都是終點，再點也不會變 —— 放錯當場就被攔下並提示了，所以柯基
+ * 出現就代表這格確定是對的，沒有理由收回；紅叉則是已經付出的代價，而且
+ * 它本身也是有用的資訊：那就是「這裡不可能」的記號。
  */
 export function cycleCell(state: GameState, row: number, col: number, now = Date.now()): GameState {
   if (isLocked(state)) return state;
   if (state.locked.has(key(row, col))) return state;
 
   const current = state.board[row]![col]!;
-
-  // 紅叉是已經付出代價的紀錄，不能點掉 —— 否則清一清就當作沒發生過，
-  // 那格「這裡不可能」的資訊也跟著消失了
-  if (current === CS.Wrong) return state;
+  // 已定案的格子不再更動
+  if (current === CS.Corgi || current === CS.Wrong) return state;
 
   const board = cloneBoard(state.board);
   let lives = state.lives;
 
-  switch (current) {
-    case CS.Empty:
-      board[row]![col] = CS.Marked;
-      break;
-    case CS.Marked: {
-      const correct = state.puzzle.solution[row] === col;
-      board[row]![col] = correct ? CS.Corgi : CS.Wrong;
-      if (!correct) lives -= 1;
-      break;
-    }
-    // 放好的柯基可以收回，讓玩家改主意
-    default:
-      board[row]![col] = CS.Empty;
-      break;
+  if (current === CS.Empty) {
+    board[row]![col] = CS.Marked;
+  } else {
+    const correct = state.puzzle.solution[row] === col;
+    board[row]![col] = correct ? CS.Corgi : CS.Wrong;
+    if (!correct) lives -= 1;
   }
 
   const next: GameState = {

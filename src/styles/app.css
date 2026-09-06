@@ -297,6 +297,8 @@ button:disabled {
   border: none;
   /* 百分比圓角是對格子自身的尺寸算的，所以大小盤面的圓潤程度自動一致 */
   border-radius: 16%;
+  /* 柯基從格子下方彈進來，超出的部分要裁掉才像「從下面冒出來」 */
+  overflow: hidden;
   padding: 0;
   display: grid;
   place-items: center;
@@ -329,11 +331,121 @@ button:disabled {
   filter: none;
 }
 
+/*
+ * 柯基的動畫分成三段，只在盤面上的柯基播放（頂欄與結算畫面用靜態的）：
+ *
+ *   START  彈出 —— 像狗趴上窗台，從格子下方頂上來，順便吐一下舌頭
+ *   IDLE   待機 1 秒 —— 幾乎不動，只有很輕的呼吸
+ *   LOOP   嗅聞 —— 往上嗅兩下、往左嗅兩下，然後回正
+ *
+ * IDLE 與 LOOP 合成同一段 3 秒的循環（前 1 秒是 IDLE），靠 animation-delay
+ * 接在 START 後面。這樣不必用 JS 計時器串接，瀏覽器自己排程就精準。
+ * 彈出動的是 corgi-root（整隻），嗅聞只動 corgi-head，身體與前腳留在原地。
+ */
 .cell-corgi {
-  width: 78%;
-  height: 78%;
+  width: 88%;
+  height: 88%;
+  align-self: end;
   pointer-events: none;
-  animation: pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cell-corgi .corgi-root {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: corgi-start 560ms cubic-bezier(0.22, 1.3, 0.4, 1) both;
+}
+
+.cell-corgi .corgi-head {
+  transform-box: fill-box;
+  /* 以脖子為軸心轉頭，繞中心轉會像頭掉下來 */
+  transform-origin: 50% 92%;
+  animation: corgi-cycle 3s 620ms ease-in-out infinite both;
+}
+
+.cell-corgi .corgi-tongue {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: corgi-lick 900ms ease-out both;
+}
+
+/* 靜態場合（頂欄、結算）不需要舌頭露在外面 */
+.corgi-tongue {
+  transform: scaleY(0);
+  transform-origin: 50% 0%;
+  transform-box: fill-box;
+}
+
+@keyframes corgi-start {
+  0% {
+    transform: translateY(120%);
+  }
+  58% {
+    transform: translateY(-8%);
+  }
+  78% {
+    transform: translateY(3%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes corgi-lick {
+  0%,
+  46% {
+    transform: scaleY(0);
+  }
+  62% {
+    transform: scaleY(1);
+  }
+  84% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes corgi-cycle {
+  /* 0–1s：IDLE，只有呼吸 */
+  0%,
+  26% {
+    transform: rotate(0deg) translateY(0) scale(1);
+  }
+  14% {
+    transform: rotate(0deg) translateY(-1%) scale(1.015);
+  }
+  33% {
+    transform: rotate(0deg) translateY(0) scale(1);
+  }
+
+  /* 1–2s：往上嗅兩下 */
+  41% {
+    transform: rotate(0deg) translateY(-7%) scale(1);
+  }
+  48% {
+    transform: rotate(0deg) translateY(-2%) scale(1);
+  }
+  55% {
+    transform: rotate(0deg) translateY(-7%) scale(1);
+  }
+  64% {
+    transform: rotate(0deg) translateY(0) scale(1);
+  }
+
+  /* 2–3s：往左嗅兩下再回正 */
+  73% {
+    transform: rotate(-11deg) translateY(-2%) scale(1);
+  }
+  80% {
+    transform: rotate(-6deg) translateY(-2%) scale(1);
+  }
+  87% {
+    transform: rotate(-11deg) translateY(-2%) scale(1);
+  }
+  100% {
+    transform: rotate(0deg) translateY(0) scale(1);
+  }
 }
 
 .cell-mark {
@@ -412,7 +524,9 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cell-corgi,
+  .cell-corgi .corgi-root,
+  .cell-corgi .corgi-head,
+  .cell-corgi .corgi-tongue,
   .cell.is-conflict,
   .cell.is-hint::before {
     animation: none;
