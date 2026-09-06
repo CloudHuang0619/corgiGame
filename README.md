@@ -28,6 +28,20 @@ npm run dev
 
 > Node 已安裝在 `C:\Program Files\nodejs\`。若終端機找不到 `npm`，是該 shell 開啟時還沒吃到系統 PATH，重開一個終端機即可。
 
+## 用手機玩
+
+`vite.config.ts` 裡設了 `server.host = true`，dev server 會綁 `0.0.0.0`，同一個 Wi-Fi 下的手機可以直接連：
+
+1. 電腦上跑 `npm run dev`
+2. 查電腦的區域網路 IP：`ipconfig`，找「IPv4 位址」（目前是 `192.168.1.106`，換網路會變）
+3. 手機瀏覽器開 `http://<那個IP>:5173`
+
+需要電腦開著、dev server 跑著、兩台在同一個 Wi-Fi。Windows 防火牆第一次可能會跳出詢問，要允許 `node.exe` 的連入連線。
+
+樣式已針對觸控處理過：關掉雙擊縮放、關掉連點反白、hover 效果只在有滑鼠時套用、並套用 safe-area 避開瀏海與底部手勢條。
+
+> 想要「隨時能開、不必開電腦」，下一步是部署到 Vercel／Netlify 並加上 PWA，手機就能加到主畫面、離線遊玩。真正上架 Google Play 需要 Android Studio；iOS 則必須有 Mac 與 Apple 開發者帳號。
+
 ## 難度
 
 | 難度 | 盤面 | 起手提示 | 需要的推論技巧 |
