@@ -11,6 +11,9 @@ import { CellState as CS, ConflictKind } from './types.ts';
 import { nextHint } from './solver.ts';
 import type { DeductionStep } from './solver.ts';
 
+/** 每關的命數。放錯一次扣一條，扣完就得重來。 */
+export const MAX_LIVES = 3;
+
 export interface GameState {
   readonly puzzle: Puzzle;
   /** board[row][col] 的三態 */
@@ -25,6 +28,11 @@ export interface GameState {
   readonly finishedAt: number | null;
   /** 看過答案。看過就不記成績，但盤面還是可以繼續操作。 */
   readonly revealed: boolean;
+  /**
+   * 剩餘命數。刻意不進 history —— 復原可以收回棋步，但收不回失誤，
+   * 否則「放錯就復原」等於沒有代價，這條規則也就沒有意義了。
+   */
+  readonly lives: number;
 }
 
 export const key = (row: number, col: number): string => `${row},${col}`;
@@ -48,59 +56,63 @@ export function createGame(puzzle: Puzzle, now = Date.now()): GameState {
     startedAt: now,
     finishedAt: null,
     revealed: false,
+    lives: MAX_LIVES,
   };
 }
 
-/** 點擊循環：空白 → 叉號 → 柯基 → 空白 */
-function nextState(current: CellState): CellState {
-  switch (current) {
-    case CS.Empty:
-      return CS.Marked;
-    case CS.Marked:
-      return CS.Corgi;
-    case CS.Corgi:
-      return CS.Empty;
-    default:
-      return CS.Empty;
-  }
+/** 命扣光了，這一關宣告失敗。 */
+export function isFailed(state: GameState): boolean {
+  return state.lives <= 0;
+}
+
+/** 這一關是否還能操作 —— 已完成或已失敗就鎖住盤面。 */
+export function isLocked(state: GameState): boolean {
+  return state.finishedAt !== null || isFailed(state);
 }
 
 function cloneBoard(board: readonly (readonly CellState[])[]): CellState[][] {
   return board.map((row) => [...row]);
 }
 
+/**
+ * 點擊一格。
+ *
+ * 循環是 空白 → 叉號 →（嘗試放柯基）→ 空白。第三步會分岔：
+ * 位置在正解上就放下柯基，不在就留下紅色叉號並扣一條命。
+ * 紅色叉號本身也是有用的資訊 —— 它就是「這裡不可能」的記號。
+ */
 export function cycleCell(state: GameState, row: number, col: number, now = Date.now()): GameState {
-  if (state.finishedAt !== null) return state;
+  if (isLocked(state)) return state;
   if (state.locked.has(key(row, col))) return state;
 
+  const current = state.board[row]![col]!;
   const board = cloneBoard(state.board);
-  board[row]![col] = nextState(state.board[row]![col]!);
+  let lives = state.lives;
+
+  switch (current) {
+    case CS.Empty:
+      board[row]![col] = CS.Marked;
+      break;
+    case CS.Marked: {
+      const correct = state.puzzle.solution[row] === col;
+      board[row]![col] = correct ? CS.Corgi : CS.Wrong;
+      if (!correct) lives -= 1;
+      break;
+    }
+    // 柯基與紅叉都退回空白，讓玩家能改主意
+    default:
+      board[row]![col] = CS.Empty;
+      break;
+  }
 
   const next: GameState = {
     ...state,
     board,
+    lives,
     moveCount: state.moveCount + 1,
     history: [...state.history, state.board],
   };
 
-  // 看過答案之後就算把盤面湊回正解，也不算通關
-  return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
-}
-
-/** 直接放柯基（提示採納、長按等入口用），不走三態循環。 */
-export function placeCorgi(state: GameState, row: number, col: number, now = Date.now()): GameState {
-  if (state.finishedAt !== null) return state;
-  if (state.locked.has(key(row, col))) return state;
-  if (state.board[row]![col] === CS.Corgi) return state;
-
-  const board = cloneBoard(state.board);
-  board[row]![col] = CS.Corgi;
-  const next: GameState = {
-    ...state,
-    board,
-    moveCount: state.moveCount + 1,
-    history: [...state.history, state.board],
-  };
   // 看過答案之後就算把盤面湊回正解，也不算通關
   return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
 }
@@ -116,7 +128,7 @@ export function placeCorgi(state: GameState, row: number, col: number, now = Dat
  * 不該把玩家辛苦推出來的柯基掃掉。
  */
 export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): GameState {
-  if (base.finishedAt !== null) return base;
+  if (isLocked(base)) return base;
 
   const board = cloneBoard(base.board);
   let changed = 0;
@@ -222,23 +234,6 @@ export function conflictCells(state: GameState): Set<string> {
     for (const c of conflict.cells) cells.add(key(c.row, c.col));
   }
   return cells;
-}
-
-/**
- * 放錯位置的柯基 —— 目前還沒撞到任何規則，但不在正解上。
- *
- * 因為每一關都保證唯一解，任何不在正解上的擺法都必定推不下去，
- * 只是玩家可能要再推十步才會撞牆。這裡直接把它揪出來。
- *
- * 與 findConflicts 是兩種不同的錯：那邊抓的是「當下就違規」，
- * 這邊抓的是「當下合法但注定死路」。
- */
-export function wrongCells(state: GameState): Set<string> {
-  const wrong = new Set<string>();
-  for (const { row, col } of corgiPositions(state)) {
-    if (state.puzzle.solution[row] !== col) wrong.add(key(row, col));
-  }
-  return wrong;
 }
 
 export function isSolved(state: GameState): boolean {

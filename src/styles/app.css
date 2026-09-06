@@ -118,6 +118,28 @@ button:disabled {
   height: 26px;
 }
 
+.topbar-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lives {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 10px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+/* 用掉的骨頭不移除，只轉成灰色留在原位，才看得出本來有三根 */
+.life-bone {
+  width: 24px;
+  height: 13px;
+}
+
 /* ------------------------------------------------------------------ 主區 */
 
 .stage {
@@ -319,6 +341,15 @@ button:disabled {
   height: 42%;
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* 放錯留下的紅叉：畫粗、畫滿，要和自己標的淡叉號一眼分得出來 */
+.cell-mark.is-wrong {
+  width: 56%;
+  height: 56%;
+  opacity: 1;
+  color: var(--danger);
+  animation: pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .cell.is-locked {
@@ -571,7 +602,44 @@ button:disabled {
   border-width: 2px;
 }
 
-/* 結算 */
+/* 失敗結算 */
+
+.fail {
+  text-align: center;
+}
+
+.fail-bones {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.fail-bones svg {
+  width: 46px;
+  height: 25px;
+}
+
+.fail-lead {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.fail-tip {
+  margin: 0 0 20px;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.fail-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* 通關結算 */
 
 .win {
   text-align: center;

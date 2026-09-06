@@ -11,11 +11,13 @@ import {
   elapsedMs,
   formatTime,
   getHint,
+  isFailed,
+  isLocked,
+  MAX_LIVES,
   restart as restartGame,
   revealSolution,
   undo as undoGame,
   markHintUsed,
-  wrongCells,
 } from '../core/game.ts';
 import type { GameState } from '../core/game.ts';
 import { LEVELS } from '../core/levels.ts';
@@ -29,13 +31,15 @@ import type { Progress } from '../core/storage.ts';
 import type { DifficultyId } from '../core/types.ts';
 
 import { Board } from './Board.tsx';
+import { Bone } from './Bone.tsx';
 import { Corgi } from './Corgi.tsx';
+import { FailDialog } from './FailDialog.tsx';
 import { LevelDialog } from './LevelDialog.tsx';
 import { RulesDialog } from './RulesDialog.tsx';
 import { Toolbar } from './Toolbar.tsx';
 import { WinDialog } from './WinDialog.tsx';
 
-type DialogName = 'levels' | 'rules' | 'win' | null;
+type DialogName = 'levels' | 'rules' | 'win' | 'fail' | null;
 
 export function App() {
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
@@ -54,19 +58,16 @@ export function App() {
 
   const levels = LEVELS[difficulty] ?? [];
   const conflicts = useMemo(() => conflictCells(game), [game]);
-  const wrong = useMemo(() => (game.revealed ? new Set<string>() : wrongCells(game)), [game]);
-  // 兩種錯都用同一種紅色呈現，玩家只要記得「紅的就是錯的」；
-  // 差別交給下方的狀態列說明。
-  const flagged = useMemo(() => new Set([...conflicts, ...wrong]), [conflicts, wrong]);
   const placed = useMemo(() => corgiPositions(game).length, [game]);
   const finished = game.finishedAt !== null;
+  const failed = isFailed(game);
 
   // 計時器：只在進行中跑，通關後就不必再每秒重繪
   useEffect(() => {
-    if (finished) return;
+    if (finished || failed) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [finished]);
+  }, [finished, failed]);
 
   const loadLevel = useCallback(
     (nextDifficulty: DifficultyId, index: number) => {
@@ -103,6 +104,23 @@ export function App() {
     // progress 刻意不放進依賴陣列：它在這個 effect 裡被更新，放進去會造成迴圈
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.finishedAt]);
+
+  // 骨頭用完就跳失敗結算
+  useEffect(() => {
+    if (!failed) return;
+    setHintCell(null);
+    setDialog('fail');
+  }, [failed]);
+
+  // 扣命時給一句說明。用 effect 觀察 lives 變化，而不是在 setGame 的
+  // updater 裡塞副作用 —— updater 必須保持純函式，StrictMode 會呼叫它兩次。
+  const previousLives = useRef(game.lives);
+  useEffect(() => {
+    if (game.lives < previousLives.current && game.lives > 0) {
+      setStatus(`放錯了，扣一根骨頭，還剩 ${game.lives} 根。那一格已標成紅叉，不用再試。`);
+    }
+    previousLives.current = game.lives;
+  }, [game.lives]);
 
   const handleCellClick = useCallback((row: number, col: number) => {
     setHintCell(null);
@@ -168,13 +186,12 @@ export function App() {
 
   const hasNext = levelIndex + 1 < levels.length;
 
-  // 違規優先講：那是當下就看得出來的硬碰撞，比「注定死路」更直觀
   const liveStatus = finished
     ? '完成！每一列、每一欄、每個區域都剛好一隻柯基。'
-    : conflicts.size > 0
-      ? `有 ${conflicts.size} 隻柯基違規了，看看標紅的位置。`
-      : wrong.size > 0
-        ? `有 ${wrong.size} 隻柯基放錯位置了 —— 目前還沒違規，但這樣推下去會走不通。`
+    : failed
+      ? '骨頭用完了，這一關要重來。'
+      : conflicts.size > 0
+        ? `有 ${conflicts.size} 隻柯基違規了，看看標紅的位置。`
         : status;
 
   return (
@@ -188,11 +205,19 @@ export function App() {
           </div>
         </div>
 
-        <div className="counter" aria-live="polite">
-          <Corgi className="counter-corgi" />
-          <span>
-            {placed}/{game.puzzle.size}
-          </span>
+        <div className="topbar-stats">
+          <div className="counter" aria-live="polite">
+            <Corgi className="counter-corgi" />
+            <span>
+              {placed}/{game.puzzle.size}
+            </span>
+          </div>
+
+          <div className="lives" aria-label={`剩餘 ${game.lives} 根骨頭`}>
+            {Array.from({ length: MAX_LIVES }, (_, i) => (
+              <Bone key={i} spent={i >= game.lives} className="life-bone" />
+            ))}
+          </div>
         </div>
       </header>
 
@@ -236,12 +261,12 @@ export function App() {
           {game.revealed && <span className="reveal-badge">答案</span>}
           <Board
             state={game}
-            conflicts={flagged}
+            conflicts={conflicts}
             hintCell={hintCell}
             onCellClick={handleCellClick}
             onStrokeStart={handleStrokeStart}
             onStrokePaint={handleStrokePaint}
-            disabled={finished}
+            disabled={isLocked(game)}
           />
         </div>
 
@@ -259,6 +284,20 @@ export function App() {
         onPick={loadLevel}
       />
       <RulesDialog open={dialog === 'rules'} onClose={() => setDialog(null)} />
+      <FailDialog
+        open={dialog === 'fail'}
+        onRetry={() => {
+          setDialog(null);
+          handleRestart();
+        }}
+        onReveal={() => {
+          setDialog(null);
+          // 先重開一局再攤答案：失敗狀態下盤面是鎖住的
+          setGame((prev) => revealSolution(restartGame(prev)));
+          setStatus('這是本關的正解。看完按「重新開始」可以再挑戰一次。');
+        }}
+        onClose={() => setDialog(null)}
+      />
       <WinDialog
         open={dialog === 'win'}
         elapsedMs={game.finishedAt ? game.finishedAt - game.startedAt : 0}

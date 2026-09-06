@@ -14,12 +14,20 @@ export type RegionGrid = readonly string[];
 /** 解答以排列表示：solution[row] = 該列柯基所在的欄。 */
 export type Solution = readonly number[];
 
-/** 一格的三種狀態。點擊會依序循環 empty → marked → corgi → empty。 */
+/**
+ * 一格的狀態。
+ *
+ * 點擊循環是 empty → marked →（嘗試放柯基）→ empty。
+ * 「嘗試放柯基」會分岔：位置正確就變成 corgi，錯了就變成 wrong
+ * （紅色叉號）並扣一條命。因為每關保證唯一解，對錯是明確的。
+ */
 export const CellState = {
   Empty: 'empty',
   /** 玩家標記「這裡不可能」的叉號 */
   Marked: 'marked',
   Corgi: 'corgi',
+  /** 放錯而留下的紅色叉號，同時也是「這裡不可能」的記號 */
+  Wrong: 'wrong',
 } as const;
 
 export type CellState = (typeof CellState)[keyof typeof CellState];

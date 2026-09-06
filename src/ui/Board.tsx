@@ -166,7 +166,13 @@ export const Board = memo(function Board({
           const isHint = hintCell?.row === row && hintCell?.col === col;
 
           const stateLabel =
-            cell === CellState.Corgi ? '柯基' : cell === CellState.Marked ? '叉號' : '空白';
+            cell === CellState.Corgi
+              ? '柯基'
+              : cell === CellState.Marked
+                ? '叉號'
+                : cell === CellState.Wrong
+                  ? '放錯過的紅色叉號'
+                  : '空白';
 
           return (
             <button
@@ -197,8 +203,12 @@ export const Board = memo(function Board({
               {cell === CellState.Corgi && (
                 <Corgi className="cell-corgi" variant={inConflict ? 'conflict' : 'normal'} />
               )}
-              {cell === CellState.Marked && (
-                <svg className="cell-mark" viewBox="0 0 24 24" aria-hidden="true">
+              {(cell === CellState.Marked || cell === CellState.Wrong) && (
+                <svg
+                  className={cell === CellState.Wrong ? 'cell-mark is-wrong' : 'cell-mark'}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
                   <path
                     d="M7 7 L17 17 M17 7 L7 17"
                     stroke="currentColor"
