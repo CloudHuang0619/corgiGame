@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "levels": "tsx scripts/build-levels.ts",
     "verify": "tsx scripts/verify-levels.ts",
+    "capacity": "tsx scripts/capacity.ts",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
