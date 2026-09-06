@@ -6,7 +6,7 @@
  * 而且格子縮放時邊界永遠對齊。
  */
 
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 
 import type { GameState } from '../core/game.ts';
 import { key } from '../core/game.ts';
@@ -43,6 +43,50 @@ export const Board = memo(function Board({
   const { puzzle, board, locked } = state;
   const size = puzzle.size;
 
+  /*
+   * 為什麼不用 onClick
+   * -----------------
+   * 觸控裝置上「一次手勢 = 一次 click」並沒有保證。瀏覽器在 touchend 之後
+   * 還會補送一組相容用的 mouse 事件，某些情況下會多產生一次 click，
+   * 結果一次點擊推進了兩個狀態（空白直接跳到柯基）。
+   *
+   * 改成自己配對 pointerdown / pointerup：
+   *   - 指標事件不論滑鼠或觸控都只會送一次，不會有相容事件的重複
+   *   - 記下按下時是哪一格，放開時必須是同一格才算數，手指滑開就取消
+   *   - 瀏覽器隨後補送的 click（detail >= 1）一律忽略
+   *   - detail === 0 的 click 來自鍵盤 Enter/Space，保留給無障礙操作
+   */
+  const pressed = useRef<{ pointerId: number; row: number; col: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, row: number, col: number) => {
+    if (e.button !== 0) return;
+    pressed.current = { pointerId: e.pointerId, row, col };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>, row: number, col: number) => {
+    const start = pressed.current;
+    pressed.current = null;
+    if (!start) return;
+    if (start.pointerId !== e.pointerId) return;
+    if (start.row !== row || start.col !== col) return;
+
+    // 觸控時瀏覽器會把指標隱式綁定在按下的那一格，就算手指移開了 pointerup
+    // 還是送到原本那格。所以要自己比對放開的座標是否仍在格子範圍內，
+    // 玩家才能用「按下去發現點錯、滑開再放」取消這一次操作。
+    const box = e.currentTarget.getBoundingClientRect();
+    const inside =
+      e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+    if (!inside) return;
+
+    onCellClick(row, col);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>, row: number, col: number) => {
+    // detail 只有鍵盤觸發時是 0；滑鼠與觸控產生的 click 都已由 pointerup 處理完
+    if (e.detail !== 0) return;
+    onCellClick(row, col);
+  };
+
   return (
     <div
       className="board"
@@ -76,7 +120,12 @@ export const Board = memo(function Board({
                 .filter(Boolean)
                 .join(' ')}
               style={{ background: REGION_COLORS[region] ?? '#ddd' }}
-              onClick={() => onCellClick(row, col)}
+              onPointerDown={(e) => handlePointerDown(e, row, col)}
+              onPointerUp={(e) => handlePointerUp(e, row, col)}
+              onPointerCancel={() => {
+                pressed.current = null;
+              }}
+              onClick={(e) => handleClick(e, row, col)}
               disabled={disabled || isLocked}
               aria-label={`第 ${row + 1} 列、第 ${col + 1} 欄，${region} 區，${stateLabel}`}
             >
