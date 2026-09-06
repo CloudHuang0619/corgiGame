@@ -1,0 +1,28 @@
+{
+  "name": "corgidoku",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "柯基邏輯益智遊戲 — 每列、每欄、每個彩色區域各一隻柯基，且不得相鄰。",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "levels": "tsx scripts/build-levels.ts",
+    "verify": "tsx scripts/verify-levels.ts",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

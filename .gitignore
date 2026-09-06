@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+*.tsbuildinfo
+
+# 編輯器
+.vscode/*
+!.vscode/extensions.json
+.idea/
