@@ -12,7 +12,8 @@ import { useEffect, useState } from 'react';
 
 import { CorgiDrawing } from './CorgiDrawing.tsx';
 import { CorgiSprite } from './CorgiSprite.tsx';
-import { spritesAvailable } from './sprites.ts';
+import { loadSheets } from './sprites.ts';
+import type { SheetLayouts } from './sprites.ts';
 
 interface CorgiProps {
   /** 已放好但違規時換成警示色（僅手繪版支援） */
@@ -23,21 +24,21 @@ interface CorgiProps {
 }
 
 export function Corgi({ variant = 'normal', className, animated = false }: CorgiProps) {
-  const [hasSprites, setHasSprites] = useState<boolean | null>(null);
+  const [sheets, setSheets] = useState<SheetLayouts | null>(null);
 
   useEffect(() => {
     let alive = true;
-    void spritesAvailable().then((ok) => {
-      if (alive) setHasSprites(ok);
+    void loadSheets().then((loaded) => {
+      if (alive) setSheets(loaded);
     });
     return () => {
       alive = false;
     };
   }, []);
 
-  // 還在偵測時先畫手繪版，避免第一幀空白閃一下
-  if (hasSprites) {
-    return <CorgiSprite className={className} still={!animated} />;
+  // 還在載入時先畫手繪版，避免第一幀空白閃一下
+  if (sheets) {
+    return <CorgiSprite sheets={sheets} className={className} still={!animated} />;
   }
   return <CorgiDrawing variant={variant} className={className} />;
 }

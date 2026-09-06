@@ -36,13 +36,14 @@ npm run dev
 
 | 段 | 影格 | 長度 | 內容 |
 | --- | --- | --- | --- |
-| START | 24 | 1.0s | 從格子下方彈出、吐一下舌頭。放下柯基時播一次 |
+| START | 20 | 0.5s | 從格子下方彈出、吐一下舌頭。放下柯基時播一次 |
 | IDLE | 24 | 1.0s | 待機 |
 | LOOP | 36 | 1.5s | 嗅聞 |
 
-播放順序是 `START →（IDLE → LOOP）→（IDLE → LOOP）→ …`，全部 24 FPS。
+播放順序是 `START →（IDLE → LOOP）→（IDLE → LOOP）→ …`。
 
-素材放在 `public/sprites/`，格式與注意事項見該資料夾的 README。
+素材放在 `public/sprites/`，**排版不限單排或多排** —— 程式會從圖檔長寬比自動
+推算幾欄幾排，匯出時不必遷就特定格式。詳細要求見該資料夾的 README。
 **檔案不存在時會自動退回 `src/ui/CorgiDrawing.tsx` 的手繪 SVG**，遊戲照常能玩，
 所以美術與程式的時程可以分開。要驗證播放機制，可以先產生測試圖：
 
@@ -52,6 +53,7 @@ python scripts/make-test-sprites.py --clean # 刪掉，恢復手繪備援
 ```
 
 逐格播放用 CSS `steps(N, jump-none)`，走合成執行緒，求解器在算的時候也不會掉格。
+多排的 sheet 用兩條動畫疊起來：橫向走完一排、縱向再換排。
 `jump-none` 不能省 —— 細節見 `src/ui/CorgiSprite.tsx` 的註解。
 
 ## 用手機玩

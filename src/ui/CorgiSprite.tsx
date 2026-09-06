@@ -4,26 +4,27 @@
  * 用 CSS steps() 逐格播放，而不是每格用 JS 換圖：steps() 走的是合成執行緒，
  * 就算主執行緒正在算求解器也不會掉格。JS 只負責在一段播完時切換到下一段。
  *
- * 逐格原理：
- *   background-size   設成 (影格數 × 100%) 寬，整張圖橫向鋪在格子上
- *   background-position-x 從 0% 動到 100%
- *   steps(N, jump-none) 產生 N 個定格，含頭尾兩端，剛好對上第 1 到第 N 格
+ * 逐格原理（支援多排排版）：
+ *   background-size  設成 (欄×100%) × (排×100%)，整張圖鋪在格子上
+ *   sprite-x         橫向從 0% 走到 100%，一排走一輪，總共重複「排數」次
+ *   sprite-y         縱向從 0% 走到 100%，把整段時間切成「排數」個定格
  *
- * jump-none 是關鍵，不能寫成單純的 steps(N)。position-x 從 0% 到 100% 實際
- * 只跨越 N-1 個影格寬（0% 是第一格靠左、100% 是最後一格靠右），steps(N) 會
- * 把它切成 N 等份、每份 (N-1)/N 格，於是每一格都停在兩張圖中間，而且最後
- * 一格永遠顯示不到。jump-none 改成切 N-1 等份但輸出 N 個值，剛好落在格線上。
+ * jump-none 是關鍵，不能寫成單純的 steps(N)。position 從 0% 到 100% 實際只
+ * 跨越 N-1 個影格寬（0% 是第一格靠左、100% 是最後一格靠右），steps(N) 會把
+ * 它切成 N 等份、每份 (N-1)/N 格，於是每一格都停在兩張圖中間，而且最後一格
+ * 永遠顯示不到。jump-none 改成切 N-1 等份但輸出 N 個值，剛好落在格線上。
  *
- * 用百分比而不是像素，所以同一份程式碼在 6×6 的大格子和 9×9 的小格子上
+ * 全部用百分比而不是像素，所以同一份程式碼在 6×6 的大格子和 9×9 的小格子上
  * 都正確，不必知道實際尺寸。
  */
 
 import { useEffect, useState } from 'react';
 
-import { NEXT_PHASE, SHEETS, sheetUrl } from './sprites.ts';
-import type { SpritePhase } from './sprites.ts';
+import { NEXT_PHASE, loadSheets } from './sprites.ts';
+import type { SheetLayouts, SpritePhase } from './sprites.ts';
 
 interface CorgiSpriteProps {
+  readonly sheets: SheetLayouts;
   readonly className?: string;
   /**
    * 靜態模式：只顯示 IDLE 的第一格，不播動畫。
@@ -32,39 +33,51 @@ interface CorgiSpriteProps {
   readonly still?: boolean;
 }
 
-export function CorgiSprite({ className, still = false }: CorgiSpriteProps) {
+export function CorgiSprite({ sheets, className, still = false }: CorgiSpriteProps) {
   const [phase, setPhase] = useState<SpritePhase>('start');
 
-  // 預先把另外兩張載進快取，切換時才不會閃一下白
+  // 讓瀏覽器先把三張圖放進快取，切換段落時才不會閃一下
   useEffect(() => {
-    if (still) return;
-    for (const next of ['idle', 'loop'] as const) {
-      const image = new Image();
-      image.src = sheetUrl(next);
-    }
-  }, [still]);
+    void loadSheets();
+  }, []);
 
   const active: SpritePhase = still ? 'idle' : phase;
-  const sheet = SHEETS[active];
+  const layout = sheets[active];
+  const { cols, rows, durationMs } = layout;
+
+  /*
+   * 多排時要兩條動畫；單排就只有橫向那條。
+   * steps(1, jump-none) 是無效語法，所以 rows === 1 必須整條省略。
+   */
+  const animation = still
+    ? undefined
+    : rows > 1
+      ? `sprite-x ${durationMs / rows}ms steps(${cols}, jump-none) ${rows} both, ` +
+        `sprite-y ${durationMs}ms steps(${rows}, jump-none) 1 both`
+      : `sprite-x ${durationMs}ms steps(${cols}, jump-none) 1 both`;
+
+  // 兩條動畫會各發一次 animationend，只認其中一條才不會把段落推進兩次
+  const finishSignal = rows > 1 ? 'sprite-y' : 'sprite-x';
 
   return (
     <div
+      /*
+       * key 掛 phase：三段共用同一組 keyframes 名稱，靠重新掛載強制重播。
+       * 若沿用同一個元素，瀏覽器會認為 animation-name 沒變而不重新開始，
+       * 第二段就永遠停在第一格。
+       */
+      key={active}
       className={[className, 'corgi-sprite', still ? 'is-still' : ''].filter(Boolean).join(' ')}
       aria-hidden="true"
       style={{
-        backgroundImage: `url("${sheetUrl(active)}")`,
-        backgroundSize: `${sheet.frames * 100}% 100%`,
-        /*
-         * 三段用三個不同名字的 keyframes（內容其實一樣）。
-         * START 與 IDLE 都是 24 格、同樣長度，若共用同一個 animation-name，
-         * 切換時瀏覽器會認為動畫沒變而不重播，第二段就永遠不會動。
-         */
-        animation: still
-          ? undefined
-          : `sprite-play-${active} ${sheet.durationMs}ms steps(${sheet.frames}, jump-none) 1 both`,
+        backgroundImage: `url("${layout.url}")`,
+        backgroundSize: `${cols * 100}% ${rows * 100}%`,
+        animation,
       }}
-      onAnimationEnd={() => {
-        if (!still) setPhase((current) => NEXT_PHASE[current]);
+      onAnimationEnd={(event) => {
+        if (still) return;
+        if (event.animationName !== finishSignal) return;
+        setPhase((current) => NEXT_PHASE[current]);
       }}
     />
   );

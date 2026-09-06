@@ -358,7 +358,11 @@ button:disabled {
   background-position: 0% 0%;
 }
 
-@keyframes sprite-play-start {
+/*
+ * 逐格捲動。三段共用同一組 keyframes，重播靠 CorgiSprite 換 key 重新掛載。
+ * 多排的 sheet 由 sprite-x 橫向走完一排、sprite-y 再往下換排。
+ */
+@keyframes sprite-x {
   from {
     background-position-x: 0%;
   }
@@ -367,21 +371,12 @@ button:disabled {
   }
 }
 
-@keyframes sprite-play-idle {
+@keyframes sprite-y {
   from {
-    background-position-x: 0%;
+    background-position-y: 0%;
   }
   to {
-    background-position-x: 100%;
-  }
-}
-
-@keyframes sprite-play-loop {
-  from {
-    background-position-x: 0%;
-  }
-  to {
-    background-position-x: 100%;
+    background-position-y: 100%;
   }
 }
 
