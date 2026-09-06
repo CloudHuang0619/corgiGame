@@ -224,6 +224,23 @@ export function conflictCells(state: GameState): Set<string> {
   return cells;
 }
 
+/**
+ * 放錯位置的柯基 —— 目前還沒撞到任何規則，但不在正解上。
+ *
+ * 因為每一關都保證唯一解，任何不在正解上的擺法都必定推不下去，
+ * 只是玩家可能要再推十步才會撞牆。這裡直接把它揪出來。
+ *
+ * 與 findConflicts 是兩種不同的錯：那邊抓的是「當下就違規」，
+ * 這邊抓的是「當下合法但注定死路」。
+ */
+export function wrongCells(state: GameState): Set<string> {
+  const wrong = new Set<string>();
+  for (const { row, col } of corgiPositions(state)) {
+    if (state.puzzle.solution[row] !== col) wrong.add(key(row, col));
+  }
+  return wrong;
+}
+
 export function isSolved(state: GameState): boolean {
   const corgis = corgiPositions(state);
   if (corgis.length !== state.puzzle.size) return false;

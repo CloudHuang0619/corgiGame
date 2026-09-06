@@ -15,6 +15,7 @@ import {
   revealSolution,
   undo as undoGame,
   markHintUsed,
+  wrongCells,
 } from '../core/game.ts';
 import type { GameState } from '../core/game.ts';
 import { LEVELS } from '../core/levels.ts';
@@ -53,6 +54,10 @@ export function App() {
 
   const levels = LEVELS[difficulty] ?? [];
   const conflicts = useMemo(() => conflictCells(game), [game]);
+  const wrong = useMemo(() => (game.revealed ? new Set<string>() : wrongCells(game)), [game]);
+  // 兩種錯都用同一種紅色呈現，玩家只要記得「紅的就是錯的」；
+  // 差別交給下方的狀態列說明。
+  const flagged = useMemo(() => new Set([...conflicts, ...wrong]), [conflicts, wrong]);
   const placed = useMemo(() => corgiPositions(game).length, [game]);
   const finished = game.finishedAt !== null;
 
@@ -163,12 +168,14 @@ export function App() {
 
   const hasNext = levelIndex + 1 < levels.length;
 
-  const conflictCount = conflicts.size;
+  // 違規優先講：那是當下就看得出來的硬碰撞，比「注定死路」更直觀
   const liveStatus = finished
     ? '完成！每一列、每一欄、每個區域都剛好一隻柯基。'
-    : conflictCount > 0
-      ? `有 ${conflictCount} 隻柯基違規了，看看標紅的位置。`
-      : status;
+    : conflicts.size > 0
+      ? `有 ${conflicts.size} 隻柯基違規了，看看標紅的位置。`
+      : wrong.size > 0
+        ? `有 ${wrong.size} 隻柯基放錯位置了 —— 目前還沒違規，但這樣推下去會走不通。`
+        : status;
 
   return (
     <div className="app">
@@ -229,7 +236,7 @@ export function App() {
           {game.revealed && <span className="reveal-badge">答案</span>}
           <Board
             state={game}
-            conflicts={conflicts}
+            conflicts={flagged}
             hintCell={hintCell}
             onCellClick={handleCellClick}
             onStrokeStart={handleStrokeStart}
