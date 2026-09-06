@@ -21,6 +21,20 @@
   box-sizing: border-box;
 }
 
+/*
+ * 觸控裝置的必要防護：
+ *   touch-action  — 關掉雙擊縮放，否則連續點格子會被瀏覽器當成放大手勢
+ *   user-select   — 快速連點時不會反白選到文字
+ *   tap-highlight — 拿掉 iOS/Android 點擊時的半透明灰色方塊
+ */
+button,
+.cell {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 html,
 body {
   margin: 0;
@@ -56,7 +70,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 20px;
+  /* 瀏海機的狀態列會蓋住頂欄，用 safe-area 把內容推下來 */
+  padding: calc(12px + env(safe-area-inset-top)) 20px 12px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
 }
@@ -183,9 +198,12 @@ button:disabled {
   transition: transform 0.15s, color 0.15s;
 }
 
-.tool:hover:not(:disabled) {
-  transform: translateY(-2px);
-  color: var(--ink);
+/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
+@media (hover: hover) {
+  .tool:hover:not(:disabled) {
+    transform: translateY(-2px);
+    color: var(--ink);
+  }
 }
 
 .tool:disabled {
@@ -259,8 +277,11 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
-.cell:hover:not(:disabled) {
-  filter: brightness(1.06);
+/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
+@media (hover: hover) {
+  .cell:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
 }
 
 .cell:active:not(:disabled) {
@@ -408,8 +429,11 @@ button:disabled {
   color: var(--ink-soft);
 }
 
-.dialog-close:hover {
-  background: var(--cream);
+/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
+@media (hover: hover) {
+  .dialog-close:hover {
+    background: var(--cream);
+  }
 }
 
 .dialog-close svg {
@@ -514,8 +538,11 @@ button:disabled {
   transition: transform 0.15s, border-color 0.15s;
 }
 
-.level-chip:hover {
-  transform: translateY(-2px);
+/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
+@media (hover: hover) {
+  .level-chip:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .level-chip-number {
@@ -615,8 +642,11 @@ button:disabled {
   transition: transform 0.15s;
 }
 
-.btn:hover {
-  transform: translateY(-2px);
+/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
+@media (hover: hover) {
+  .btn:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .btn-primary {
@@ -638,8 +668,18 @@ button:disabled {
   }
 
   .stage {
-    padding: 14px 12px 32px;
+    padding: 14px 12px calc(32px + env(safe-area-inset-bottom));
     gap: 12px;
+  }
+
+  /* 手機直式時工具列容易擠，縮一點但維持 44px 的可點面積下限 */
+  .toolbar {
+    gap: 8px;
+  }
+
+  .tool {
+    width: 44px;
+    height: 44px;
   }
 
   .stage-head h2 {
