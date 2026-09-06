@@ -35,6 +35,9 @@ export function RulesDialog({ open, onClose }: { open: boolean; onClose: () => v
       </ol>
       <p className="rules-foot">
         點擊格子會依序切換：<b>空白 → 叉號 → 柯基 → 空白</b>。叉號只是你的筆記，不影響判定。
+        <br />
+        要一次排除一整排，可以<b>按著拖曳</b>劃過多個格子，經過的空白格會一起標上叉號；
+        已經放好的柯基不會被蓋掉，整段拖曳按一次復原就能取消。
       </p>
     </Dialog>
   );

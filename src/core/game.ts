@@ -105,6 +105,42 @@ export function placeCorgi(state: GameState, row: number, col: number, now = Dat
   return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
 }
 
+/**
+ * 一次拖曳把經過的空白格全部標成叉號。
+ *
+ * 刻意從「拖曳開始前的狀態」重新套用整組座標，而不是逐格累加：
+ * 這樣整段拖曳只留下一筆復原紀錄，撤銷時一次退回拖曳前，
+ * 不必按十幾次。每次重算是 O(經過的格數)，成本可以忽略。
+ *
+ * 已經有叉號或柯基的格子一律跳過 —— 拖曳是用來快速排除，
+ * 不該把玩家辛苦推出來的柯基掃掉。
+ */
+export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): GameState {
+  if (base.finishedAt !== null) return base;
+
+  const board = cloneBoard(base.board);
+  let changed = 0;
+
+  for (const cellKey of cells) {
+    if (base.locked.has(cellKey)) continue;
+    const [rowText, colText] = cellKey.split(',');
+    const row = Number(rowText);
+    const col = Number(colText);
+    if (board[row]?.[col] !== CS.Empty) continue;
+    board[row]![col] = CS.Marked;
+    changed += 1;
+  }
+
+  if (changed === 0) return base;
+
+  return {
+    ...base,
+    board,
+    moveCount: base.moveCount + changed,
+    history: [...base.history, base.board],
+  };
+}
+
 export function undo(state: GameState): GameState {
   const previous = state.history[state.history.length - 1];
   if (!previous) return state;

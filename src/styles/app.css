@@ -265,6 +265,11 @@ button:disabled {
 
 .cell {
   position: relative;
+  /*
+   * none 而不是 manipulation：拖曳標記需要吃掉手指的移動，
+   * 否則在手機上劃過格子會變成捲動整個頁面，一格都畫不到。
+   */
+  touch-action: none;
   aspect-ratio: 1;
   min-width: 0;
   border: none;

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DIFFICULTY_SPECS } from '../core/generator.ts';
 import {
+  applyMarkStroke,
   conflictCells,
   corgiPositions,
   createGame,
   cycleCell,
+  key,
   elapsedMs,
   formatTime,
   getHint,
@@ -100,6 +102,28 @@ export function App() {
   const handleCellClick = useCallback((row: number, col: number) => {
     setHintCell(null);
     setGame((prev) => cycleCell(prev, row, col));
+  }, []);
+
+  // 拖曳標記時要能拿到「拖曳開始前」的盤面當復原點，而事件處理器裡讀不到
+  // 最新的 game（閉包會是上一次 render 的），所以用 ref 同步一份。
+  const gameRef = useRef(game);
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  const stroke = useRef<{ base: GameState; cells: Set<string> } | null>(null);
+
+  const handleStrokeStart = useCallback(() => {
+    setHintCell(null);
+    stroke.current = { base: gameRef.current, cells: new Set() };
+  }, []);
+
+  const handleStrokePaint = useCallback((row: number, col: number) => {
+    const current = stroke.current;
+    if (!current) return;
+    current.cells.add(key(row, col));
+    // 每次都從拖曳前的盤面重算，整段拖曳因此只產生一筆復原紀錄
+    setGame(applyMarkStroke(current.base, current.cells));
   }, []);
 
   const handleHint = useCallback(() => {
@@ -208,6 +232,8 @@ export function App() {
             conflicts={conflicts}
             hintCell={hintCell}
             onCellClick={handleCellClick}
+            onStrokeStart={handleStrokeStart}
+            onStrokePaint={handleStrokePaint}
             disabled={finished}
           />
         </div>

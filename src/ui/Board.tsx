@@ -20,6 +20,10 @@ interface BoardProps {
   /** 提示指出的格子，畫脈動光暈 */
   readonly hintCell: { row: number; col: number } | null;
   readonly onCellClick: (row: number, col: number) => void;
+  /** 開始一段拖曳標記，App 會在這時記下復原點 */
+  readonly onStrokeStart: () => void;
+  /** 拖曳經過的格子，累積起來一起套用 */
+  readonly onStrokePaint: (row: number, col: number) => void;
   readonly disabled?: boolean;
 }
 
@@ -38,6 +42,8 @@ export const Board = memo(function Board({
   conflicts,
   hintCell,
   onCellClick,
+  onStrokeStart,
+  onStrokePaint,
   disabled = false,
 }: BoardProps) {
   const { puzzle, board, locked } = state;
@@ -56,11 +62,65 @@ export const Board = memo(function Board({
    *   - 瀏覽器隨後補送的 click（detail >= 1）一律忽略
    *   - detail === 0 的 click 來自鍵盤 Enter/Space，保留給無障礙操作
    */
-  const pressed = useRef<{ pointerId: number; row: number; col: number } | null>(null);
+  const pressed = useRef<{
+    pointerId: number;
+    row: number;
+    col: number;
+    /** 手指／滑鼠是否已經離開起始格 —— 離開了就是拖曳，不是單擊 */
+    dragging: boolean;
+    /** 上一次塗到的格子，用來補上兩次事件之間被跨過的格子 */
+    lastRow: number;
+    lastCol: number;
+  } | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, row: number, col: number) => {
     if (e.button !== 0) return;
-    pressed.current = { pointerId: e.pointerId, row, col };
+    pressed.current = { pointerId: e.pointerId, row, col, dragging: false, lastRow: row, lastCol: col };
+  };
+
+  /*
+   * 拖曳標記
+   * --------
+   * 觸控時瀏覽器會把指標隱式綁定在按下的那一格，pointermove 永遠送到原本那格，
+   * e.target 沒有參考價值。所以改用 elementFromPoint 反查目前指標底下是哪一格，
+   * 滑鼠與觸控就能走同一套邏輯。
+   */
+  const cellUnderPointer = (clientX: number, clientY: number): { row: number; col: number } | null => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const cell = element?.closest<HTMLElement>('[data-row]');
+    if (!cell) return null;
+    return { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = pressed.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+
+    const here = cellUnderPointer(e.clientX, e.clientY);
+    if (!here) return;
+    if (!start.dragging && here.row === start.row && here.col === start.col) return;
+
+    if (!start.dragging) {
+      // 剛離開起始格，這一刻才確定是拖曳。先記下復原點，起始格也要塗。
+      start.dragging = true;
+      onStrokeStart();
+      onStrokePaint(start.row, start.col);
+    }
+
+    /*
+     * pointermove 是離散取樣的，手指劃快一點就會直接從第 1 格跳到第 3 格，
+     * 中間那格永遠收不到事件。所以沿著上一格到這一格的直線把中間補滿，
+     * 快速劃過才不會漏格。
+     */
+    const steps = Math.max(Math.abs(here.row - start.lastRow), Math.abs(here.col - start.lastCol));
+    for (let i = 1; i <= steps; i += 1) {
+      const row = Math.round(start.lastRow + ((here.row - start.lastRow) * i) / steps);
+      const col = Math.round(start.lastCol + ((here.col - start.lastCol) * i) / steps);
+      onStrokePaint(row, col);
+    }
+
+    start.lastRow = here.row;
+    start.lastCol = here.col;
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>, row: number, col: number) => {
@@ -68,6 +128,8 @@ export const Board = memo(function Board({
     pressed.current = null;
     if (!start) return;
     if (start.pointerId !== e.pointerId) return;
+    // 拖曳過了就不再當成單擊，否則起始格會被多推進一個狀態
+    if (start.dragging) return;
     if (start.row !== row || start.col !== col) return;
 
     // 觸控時瀏覽器會把指標隱式綁定在按下的那一格，就算手指移開了 pointerup
@@ -93,6 +155,7 @@ export const Board = memo(function Board({
       style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
       role="grid"
       aria-label={`${size} 乘 ${size} 的柯基盤面`}
+      onPointerMove={handlePointerMove}
     >
       {board.map((rowCells, row) =>
         rowCells.map((cell, col) => {
@@ -120,6 +183,8 @@ export const Board = memo(function Board({
                 .filter(Boolean)
                 .join(' ')}
               style={{ background: REGION_COLORS[region] ?? '#ddd' }}
+              data-row={row}
+              data-col={col}
               onPointerDown={(e) => handlePointerDown(e, row, col)}
               onPointerUp={(e) => handlePointerUp(e, row, col)}
               onPointerCancel={() => {
