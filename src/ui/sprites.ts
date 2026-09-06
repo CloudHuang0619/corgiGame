@@ -85,11 +85,15 @@ function measure(phase: SpritePhase): Promise<SheetLayout | null> {
   });
 }
 
-export type SheetLayouts = Record<SpritePhase, SheetLayout>;
+/** 已經備妥的 sheet。素材可以逐張交付，所以每一段都可能缺席。 */
+export type SheetLayouts = Partial<Record<SpritePhase, SheetLayout>>;
 
 /**
- * 載入三張 sheet 並量出排版。任何一張缺席就整組放棄，改用手繪備援 ——
- * 只有一半的動畫比完全沒有更奇怪。
+ * 載入 sheet 並量出排版。
+ *
+ * 允許只有部分段落到位 —— 美術是一段一段做的，等三張都齊才能看到效果
+ * 對回饋循環太不友善。缺席的段落會在播放時被跳過（見 CorgiSprite）。
+ * 一張都沒有時回傳 null，整個退回手繪備援。
  *
  * 結果快取在模組層，整個 App 只量一次。
  */
@@ -98,8 +102,41 @@ let pending: Promise<SheetLayouts | null> | null = null;
 export function loadSheets(): Promise<SheetLayouts | null> {
   if (!pending) {
     pending = Promise.all([measure('start'), measure('idle'), measure('loop')]).then(
-      ([start, idle, loop]) => (start && idle && loop ? { start, idle, loop } : null),
+      ([start, idle, loop]) => {
+        const found: SheetLayouts = {};
+        if (start) found.start = start;
+        if (idle) found.idle = idle;
+        if (loop) found.loop = loop;
+        return Object.keys(found).length > 0 ? found : null;
+      },
     );
   }
   return pending;
+}
+
+/**
+ * 找下一個有素材的段落。全部缺席時回傳 null，播放就停在最後一格。
+ * 最多繞一圈就停，避免 IDLE 與 LOOP 都缺席時無限迴圈。
+ */
+export function resolveNextPhase(from: SpritePhase, sheets: SheetLayouts): SpritePhase | null {
+  let phase = NEXT_PHASE[from];
+  for (let hop = 0; hop < 3; hop += 1) {
+    if (sheets[phase]) return phase;
+    phase = NEXT_PHASE[phase];
+  }
+  return null;
+}
+
+/** 開場要播的段落：有 START 就從 START 開始，否則直接進 IDLE 或 LOOP。 */
+export function firstPhase(sheets: SheetLayouts): SpritePhase | null {
+  if (sheets.start) return 'start';
+  if (sheets.idle) return 'idle';
+  return sheets.loop ? 'loop' : null;
+}
+
+/** 靜態顯示用的段落：優先 IDLE，其次 START。 */
+export function stillPhase(sheets: SheetLayouts): SpritePhase | null {
+  if (sheets.idle) return 'idle';
+  if (sheets.start) return 'start';
+  return sheets.loop ? 'loop' : null;
 }

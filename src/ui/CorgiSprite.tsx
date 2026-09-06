@@ -20,7 +20,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { NEXT_PHASE, loadSheets } from './sprites.ts';
+import { firstPhase, loadSheets, resolveNextPhase, stillPhase } from './sprites.ts';
 import type { SheetLayouts, SpritePhase } from './sprites.ts';
 
 interface CorgiSpriteProps {
@@ -34,16 +34,23 @@ interface CorgiSpriteProps {
 }
 
 export function CorgiSprite({ sheets, className, still = false }: CorgiSpriteProps) {
-  const [phase, setPhase] = useState<SpritePhase>('start');
+  const [phase, setPhase] = useState<SpritePhase | null>(() => firstPhase(sheets));
 
-  // 讓瀏覽器先把三張圖放進快取，切換段落時才不會閃一下
+  // 讓瀏覽器先把圖放進快取，切換段落時才不會閃一下
   useEffect(() => {
     void loadSheets();
   }, []);
 
-  const active: SpritePhase = still ? 'idle' : phase;
-  const layout = sheets[active];
+  const active = still ? stillPhase(sheets) : phase;
+  const layout = active ? sheets[active] : undefined;
+  if (!active || !layout) return null;
+
   const { cols, rows, durationMs } = layout;
+
+  // 兩條動畫會各發一次 animationend，只認其中一條才不會把段落推進兩次
+  const finishSignal = rows > 1 ? 'sprite-y' : 'sprite-x';
+  // 只剩這一段有素材時就讓它自己循環，而不是播完卡在最後一格
+  const soloLoop = resolveNextPhase(active, sheets) === active;
 
   /*
    * 多排時要兩條動畫；單排就只有橫向那條。
@@ -52,12 +59,9 @@ export function CorgiSprite({ sheets, className, still = false }: CorgiSpritePro
   const animation = still
     ? undefined
     : rows > 1
-      ? `sprite-x ${durationMs / rows}ms steps(${cols}, jump-none) ${rows} both, ` +
-        `sprite-y ${durationMs}ms steps(${rows}, jump-none) 1 both`
-      : `sprite-x ${durationMs}ms steps(${cols}, jump-none) 1 both`;
-
-  // 兩條動畫會各發一次 animationend，只認其中一條才不會把段落推進兩次
-  const finishSignal = rows > 1 ? 'sprite-y' : 'sprite-x';
+      ? `sprite-x ${durationMs / rows}ms steps(${cols}, jump-none) ${soloLoop ? 'infinite' : rows} both, ` +
+        `sprite-y ${durationMs}ms steps(${rows}, jump-none) ${soloLoop ? 'infinite' : '1'} both`
+      : `sprite-x ${durationMs}ms steps(${cols}, jump-none) ${soloLoop ? 'infinite' : '1'} both`;
 
   return (
     <div
@@ -72,12 +76,19 @@ export function CorgiSprite({ sheets, className, still = false }: CorgiSpritePro
       style={{
         backgroundImage: `url("${layout.url}")`,
         backgroundSize: `${cols * 100}% ${rows * 100}%`,
+        /*
+         * 靜態顯示要挑一格「站定」的姿勢。IDLE 與 LOOP 的第一格就是，
+         * 但 START 的第一格是柯基還在畫面外、只露出耳朵尖，看起來像沒圖，
+         * 所以 START 要取最後一格。
+         */
+        backgroundPosition: still && active === 'start' ? '100% 100%' : '0% 0%',
         animation,
       }}
       onAnimationEnd={(event) => {
         if (still) return;
         if (event.animationName !== finishSignal) return;
-        setPhase((current) => NEXT_PHASE[current]);
+        // 下一段沒有素材就留在最後一格，不要跳回沒圖的段落
+        setPhase((current) => (current ? (resolveNextPhase(current, sheets) ?? current) : current));
       }}
     />
   );
