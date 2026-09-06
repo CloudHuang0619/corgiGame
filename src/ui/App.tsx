@@ -10,6 +10,7 @@ import {
   formatTime,
   getHint,
   restart as restartGame,
+  revealSolution,
   undo as undoGame,
   markHintUsed,
 } from '../core/game.ts';
@@ -124,6 +125,18 @@ export function App() {
     setNow(Date.now());
   }, []);
 
+  const handleReveal = useCallback(() => {
+    setHintCell(null);
+    if (game.revealed) {
+      // 收起答案 = 退回攤開之前那一步
+      setStatus('答案已收起，回到你剛才的盤面。');
+      setGame((prev) => undoGame(prev));
+      return;
+    }
+    setStatus('這是本關的正解。這一關不會記錄成績，按同一顆鈕可以收起來。');
+    setGame((prev) => revealSolution(prev));
+  }, [game.revealed]);
+
   const hasNext = levelIndex + 1 < levels.length;
 
   const conflictCount = conflicts.size;
@@ -182,11 +195,14 @@ export function App() {
           onHint={handleHint}
           onUndo={handleUndo}
           onRestart={handleRestart}
+          onReveal={handleReveal}
           onRules={() => setDialog('rules')}
           canUndo={game.history.length > 0}
+          revealed={game.revealed}
         />
 
-        <div className="board-frame">
+        <div className={game.revealed ? 'board-frame is-revealed' : 'board-frame'}>
+          {game.revealed && <span className="reveal-badge">答案</span>}
           <Board
             state={game}
             conflicts={conflicts}

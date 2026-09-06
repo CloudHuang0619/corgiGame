@@ -23,6 +23,8 @@ export interface GameState {
   readonly history: readonly (readonly (readonly CellState[])[])[];
   readonly startedAt: number;
   readonly finishedAt: number | null;
+  /** 看過答案。看過就不記成績，但盤面還是可以繼續操作。 */
+  readonly revealed: boolean;
 }
 
 export const key = (row: number, col: number): string => `${row},${col}`;
@@ -45,6 +47,7 @@ export function createGame(puzzle: Puzzle, now = Date.now()): GameState {
     history: [],
     startedAt: now,
     finishedAt: null,
+    revealed: false,
   };
 }
 
@@ -80,7 +83,8 @@ export function cycleCell(state: GameState, row: number, col: number, now = Date
     history: [...state.history, state.board],
   };
 
-  return isSolved(next) ? { ...next, finishedAt: now } : next;
+  // 看過答案之後就算把盤面湊回正解，也不算通關
+  return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
 }
 
 /** 直接放柯基（提示採納、長按等入口用），不走三態循環。 */
@@ -97,7 +101,8 @@ export function placeCorgi(state: GameState, row: number, col: number, now = Dat
     moveCount: state.moveCount + 1,
     history: [...state.history, state.board],
   };
-  return isSolved(next) ? { ...next, finishedAt: now } : next;
+  // 看過答案之後就算把盤面湊回正解，也不算通關
+  return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
 }
 
 export function undo(state: GameState): GameState {
@@ -108,6 +113,8 @@ export function undo(state: GameState): GameState {
     board: previous,
     history: state.history.slice(0, -1),
     finishedAt: null,
+    // 從「看過答案」的盤面退回來，就不再算看過 —— 答案已經不在畫面上了
+    revealed: false,
   };
 }
 
@@ -226,6 +233,28 @@ export function getHint(state: GameState): Hint | null {
 /** 記一次提示使用；刻意不叫 useHint，免得被當成 React hook。 */
 export function markHintUsed(state: GameState): GameState {
   return { ...state, hintsUsed: state.hintsUsed + 1 };
+}
+
+/**
+ * 攤開答案。
+ *
+ * 刻意不設 finishedAt —— 看答案不是通關，不該跳結算也不該記成績。
+ * 盤面維持可操作，而且進了 history，按復原就能回到看之前的狀態。
+ */
+export function revealSolution(state: GameState): GameState {
+  const board: CellState[][] = Array.from({ length: state.puzzle.size }, () =>
+    new Array<CellState>(state.puzzle.size).fill(CS.Empty),
+  );
+  state.puzzle.solution.forEach((col, row) => {
+    board[row]![col] = CS.Corgi;
+  });
+
+  return {
+    ...state,
+    board,
+    revealed: true,
+    history: [...state.history, state.board],
+  };
 }
 
 export function elapsedMs(state: GameState, now = Date.now()): number {

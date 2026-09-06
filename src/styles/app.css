@@ -205,11 +205,33 @@ button:disabled {
 /* ------------------------------------------------------------------ 盤面 */
 
 .board-frame {
+  position: relative;
   width: 100%;
   padding: 14px;
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
+}
+
+/* 攤開答案時整塊盤面換個底色，避免看完忘記自己在看答案 */
+.board-frame.is-revealed {
+  background: #fdf0e2;
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-md);
+}
+
+.reveal-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 14px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  z-index: 1;
 }
 
 .board {
