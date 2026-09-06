@@ -276,13 +276,13 @@ button:disabled {
 
 .board {
   display: grid;
-  gap: 0;
+  /*
+   * 格子之間留白就是分界，不再畫線。
+   * gap 用百分比（對盤面寬度計算），6x6 到 9x9 的疏密比例才會一致。
+   */
+  gap: 1.4%;
   width: 100%;
   aspect-ratio: 1;
-  /* 外框把整塊盤面收邊，內部的 edge-* 只負責區域之間的分界 */
-  border: 3px solid var(--ink);
-  border-radius: 10px;
-  overflow: hidden;
 }
 
 .cell {
@@ -295,13 +295,13 @@ button:disabled {
   aspect-ratio: 1;
   min-width: 0;
   border: none;
+  /* 百分比圓角是對格子自身的尺寸算的，所以大小盤面的圓潤程度自動一致 */
+  border-radius: 16%;
   padding: 0;
   display: grid;
   place-items: center;
   color: var(--ink);
   transition: filter 0.12s;
-  /* 同區域之間的細白線 */
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 /* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
@@ -315,18 +315,18 @@ button:disabled {
   filter: brightness(0.94);
 }
 
-/* 區域邊界：不同區域相接處畫粗深線 */
-.cell.edge-top {
-  border-top: 3px solid var(--ink);
+/*
+ * 放錯留下的紅叉不能再更動，所以拿掉可點擊的回饋。
+ * 這裡刻意不加任何濾鏡 —— 去飽和會把紅叉一起洗成灰色，
+ * 那正是最需要醒目的東西。
+ */
+.cell.is-spent {
+  cursor: default;
 }
-.cell.edge-bottom {
-  border-bottom: 3px solid var(--ink);
-}
-.cell.edge-left {
-  border-left: 3px solid var(--ink);
-}
-.cell.edge-right {
-  border-right: 3px solid var(--ink);
+
+.cell.is-spent:hover,
+.cell.is-spent:active {
+  filter: none;
 }
 
 .cell-corgi {
@@ -352,15 +352,17 @@ button:disabled {
   animation: pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.cell.is-locked {
-  filter: saturate(0.82);
-}
-
+/*
+ * 開局就擺好的柯基。原本壓一層暗色遮罩表示鎖定，但那會把柯基本身也一起
+ * 洗掉，反而看不清楚。改成內縮一圈白框 —— 一樣看得出「這格不能動」，
+ * 又不影響柯基的辨識度。
+ */
 .cell.is-locked::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(61, 48, 44, 0.08);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.72);
   pointer-events: none;
 }
 
@@ -372,7 +374,8 @@ button:disabled {
   content: '';
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 0 4px var(--danger);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 3px var(--danger);
   pointer-events: none;
 }
 
@@ -380,7 +383,8 @@ button:disabled {
   content: '';
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 0 4px var(--accent-deep);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 3px var(--accent-deep);
   animation: pulse 1s ease-in-out infinite;
   pointer-events: none;
 }

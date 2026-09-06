@@ -1,9 +1,8 @@
 /**
  * 盤面
  *
- * 區域邊界的畫法：每一格分別判斷四個邊「隔壁是不是同一個區域」，
- * 不同區域就畫粗深色線、同區域畫細白線。這比用 SVG 疊一層外框簡單得多，
- * 而且格子縮放時邊界永遠對齊。
+ * 區域不畫外框，純粹靠顏色分辨 —— 格子做成圓角磚塊、彼此留白，
+ * 深色線條會把整個畫面切得很碎。九種色相彼此夠遠，不畫線也分得出來。
  */
 
 import { memo, useRef } from 'react';
@@ -25,16 +24,6 @@ interface BoardProps {
   /** 拖曳經過的格子，累積起來一起套用 */
   readonly onStrokePaint: (row: number, col: number) => void;
   readonly disabled?: boolean;
-}
-
-function edgeClasses(regions: readonly string[], row: number, col: number, size: number): string {
-  const me = regions[row]![col]!;
-  const classes: string[] = [];
-  if (row === 0 || regions[row - 1]![col] !== me) classes.push('edge-top');
-  if (row === size - 1 || regions[row + 1]![col] !== me) classes.push('edge-bottom');
-  if (col === 0 || regions[row]![col - 1] !== me) classes.push('edge-left');
-  if (col === size - 1 || regions[row]![col + 1] !== me) classes.push('edge-right');
-  return classes.join(' ');
 }
 
 export const Board = memo(function Board({
@@ -181,10 +170,11 @@ export const Board = memo(function Board({
               role="gridcell"
               className={[
                 'cell',
-                edgeClasses(puzzle.regions, row, col, size),
                 inConflict ? 'is-conflict' : '',
                 isHint ? 'is-hint' : '',
                 isLocked ? 'is-locked' : '',
+                // 紅叉點不掉，就不該給它可點擊的回饋
+                cell === CellState.Wrong ? 'is-spent' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

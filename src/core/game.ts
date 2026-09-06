@@ -86,6 +86,11 @@ export function cycleCell(state: GameState, row: number, col: number, now = Date
   if (state.locked.has(key(row, col))) return state;
 
   const current = state.board[row]![col]!;
+
+  // 紅叉是已經付出代價的紀錄，不能點掉 —— 否則清一清就當作沒發生過，
+  // 那格「這裡不可能」的資訊也跟著消失了
+  if (current === CS.Wrong) return state;
+
   const board = cloneBoard(state.board);
   let lives = state.lives;
 
@@ -99,7 +104,7 @@ export function cycleCell(state: GameState, row: number, col: number, now = Date
       if (!correct) lives -= 1;
       break;
     }
-    // 柯基與紅叉都退回空白，讓玩家能改主意
+    // 放好的柯基可以收回，讓玩家改主意
     default:
       board[row]![col] = CS.Empty;
       break;
@@ -156,9 +161,16 @@ export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): Ga
 export function undo(state: GameState): GameState {
   const previous = state.history[state.history.length - 1];
   if (!previous) return state;
+
+  // 紅叉不隨復原消失。命已經扣了，若還能靠復原把痕跡抹掉，就會變成
+  // 「點錯 → 復原 → 當作沒事」，跟不能點掉紅叉的規則自相矛盾。
+  const board = previous.map((row, r) =>
+    row.map((cell, c) => (state.board[r]![c] === CS.Wrong ? CS.Wrong : cell)),
+  );
+
   return {
     ...state,
-    board: previous,
+    board,
     history: state.history.slice(0, -1),
     finishedAt: null,
     // 從「看過答案」的盤面退回來，就不再算看過 —— 答案已經不在畫面上了
