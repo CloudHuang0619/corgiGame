@@ -8,6 +8,14 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    watch: {
+      /*
+       * art/ 是原始素材與校正腳本的產物，不參與打包。
+       * 而且校正腳本會覆寫這些檔案，Windows 上檔案鎖會讓監看器丟 EBUSY
+       * 而整個 dev server 崩潰 —— 排除掉最乾脆。
+       */
+      ignored: ['**/art/**'],
+    },
   },
   build: {
     outDir: 'dist',

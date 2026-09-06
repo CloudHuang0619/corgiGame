@@ -34,11 +34,11 @@ npm run dev
 
 盤面上的柯基會播三段動畫：
 
-| 段 | 影格 | 長度 | 內容 |
-| --- | --- | --- | --- |
-| START | 20 | 0.5s | 從格子下方彈出、吐一下舌頭。放下柯基時播一次 |
-| IDLE | 24 | 1.0s | 待機 |
-| LOOP | 36 | 1.5s | 嗅聞 |
+| 段 | 排版 | 影格 | 長度 | 內容 |
+| --- | --- | --- | --- | --- |
+| START | 6×2 | 12 | 0.5s | 從格子下方彈出、吐一下舌頭。放下柯基時播一次 |
+| IDLE | 12×1 | 12 | 1.0s | 待機 |
+| LOOP | 6×4 | 24 | 1.5s | 嗅聞 |
 
 播放順序是 `START →（IDLE → LOOP）→（IDLE → LOOP）→ …`。
 
@@ -50,6 +50,12 @@ npm run dev
 ```bash
 python scripts/make-test-sprites.py         # 產生有編號的測試 sheet
 python scripts/make-test-sprites.py --clean # 刪掉，恢復手繪備援
+```
+
+換新素材時通常需要先校正格線（產圖工具的輸出很少是像素對齊的）：
+
+```bash
+python scripts/normalize-sprites.py public/sprites/corgi-idle.png --cols 12 --rows 1
 ```
 
 逐格播放用 CSS `steps(N, jump-none)`，走合成執行緒，求解器在算的時候也不會掉格。

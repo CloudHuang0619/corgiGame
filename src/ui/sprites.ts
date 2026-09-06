@@ -19,10 +19,12 @@ export interface SheetSpec {
   readonly durationMs: number;
 }
 
+// 影格數要跟素材一致。素材由 scripts/normalize-sprites.py 校正過，
+// 校正後格子是正方形、格線切齊，前端才能從長寬比推出排版。
 export const SHEETS: Record<SpritePhase, SheetSpec> = {
-  start: { file: 'corgi-start.png', frames: 20, durationMs: 500 },
-  idle: { file: 'corgi-idle.png', frames: 24, durationMs: 1000 },
-  loop: { file: 'corgi-loop.png', frames: 36, durationMs: 1500 },
+  start: { file: 'corgi-start.png', frames: 12, durationMs: 500 },
+  idle: { file: 'corgi-idle.png', frames: 12, durationMs: 1000 },
+  loop: { file: 'corgi-loop.png', frames: 24, durationMs: 1500 },
 };
 
 /** START 播完接 IDLE；之後 IDLE 與 LOOP 互相接力 */

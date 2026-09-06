@@ -8,3 +8,6 @@ dist/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# 校正腳本產生的預覽圖，不需要進版控（art/raw/ 的原始素材要留）
+art/preview/
