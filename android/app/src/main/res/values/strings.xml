@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Corgidoku</string>
+    <string name="title_activity_main">Corgidoku</string>
+    <string name="package_name">com.corgidoku.app</string>
+    <string name="custom_url_scheme">com.corgidoku.app</string>
+</resources>

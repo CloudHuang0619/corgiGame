@@ -2,8 +2,8 @@
  * 遊戲主畫面
  *
  * 版面由上而下：返回／關卡分數／設定、進度與生命、規則卡、盤面。
- * 規格裡底部還有兩顆道具鈕與橫幅廣告，那兩塊分別屬於道具系統與變現，
- * 這一版不做。
+ * 規格裡底部還有兩顆道具鈕與橫幅廣告。橫幅已經接上（見 src/ads），
+ * 只在原生 App 裡才會出現；兩顆道具鈕屬於道具系統，尚未做。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +23,7 @@ import {
   MAX_LIVES,
   restart as restartGame,
   revealSolution,
+  revive,
   tapCell,
   undo as undoGame,
 } from '../../core/game.ts';
@@ -32,6 +33,13 @@ import { loadSession, saveSession, clearSession } from '../../core/storage.ts';
 import type { PlayerProfile, Settings } from '../../core/storage.ts';
 import type { Coord, RuleId } from '../../core/types.ts';
 import type { Translate } from '../../i18n/index.ts';
+import {
+  hideBanner,
+  isRewardedReady,
+  showBanner,
+  showInterstitial,
+  showRewarded,
+} from '../../ads/index.ts';
 
 import { Board } from '../Board.tsx';
 import { Bone } from '../Bone.tsx';
@@ -55,6 +63,9 @@ interface GameProps {
 }
 
 type DialogName = 'settings' | 'clear' | 'fail' | 'levels' | null;
+
+/** 每幾關播一次通關插頁廣告 */
+const INTERSTITIAL_EVERY = 3;
 
 export function Game({
   t,
@@ -113,6 +124,18 @@ export function Game({
     return () => window.clearInterval(id);
   }, [game]);
 
+  /*
+   * 底部橫幅只跟著遊戲畫面的生命週期走，不是全域掛著的。
+   * 首頁與各種對話框都是短暫停留，橫幅在那裡只會遮到 CTA；而且離開時
+   * 若不移除，下次進來會沿用上一次的請求，曝光數就不準了。
+   */
+  useEffect(() => {
+    void showBanner();
+    return () => {
+      void hideBanner();
+    };
+  }, []);
+
   // 通關：記錄成績、清掉進行中存檔，接著跑慶祝序列（見 ClearSequence）
   const clearedRef = useRef(false);
   const cleared = game.finishedAt !== null;
@@ -125,10 +148,28 @@ export function Game({
     onCleared(level, game.score, game.lives, game.finishedAt - game.startedAt);
   }, [game.finishedAt, game.score, game.lives, game.startedAt, level, onCleared]);
 
-  // 序列走到最後一拍才開慶祝畫面
+  /*
+   * 序列走到最後一拍：先插頁廣告，關掉之後才開慶祝畫面。
+   *
+   * 位置照規格——原版是在結算「中間」夾廣告，不是慶祝完才跳。放在慶祝
+   * 之前，玩家的注意力還在「我過關了」上；放在之後就變成打斷歡呼。
+   *
+   * 每 INTERSTITIAL_EVERY 關才播一次。每關都播會讓連續闖關變成一直在
+   * 看廣告，留存掉得比多賺的曝光還快；沒有廣告可播時 showInterstitial
+   * 會立刻 resolve，玩家不會多等。
+   */
   useEffect(() => {
-    if (clearStage === 'celebration') setDialog('clear');
-  }, [clearStage]);
+    if (clearStage !== 'celebration') return;
+    let alive = true;
+    const run = async () => {
+      if (level % INTERSTITIAL_EVERY === 0) await showInterstitial();
+      if (alive) setDialog('clear');
+    };
+    void run();
+    return () => {
+      alive = false;
+    };
+  }, [clearStage, level]);
 
   // 通關的瞬間分數就跳到最終值，不必等 +N 飄完
   useEffect(() => {
@@ -140,9 +181,35 @@ export function Game({
   }, [level]);
 
   // 命耗盡
+  const [rewardOffered, setRewardOffered] = useState(false);
+  const [revived, setRevived] = useState(false);
+
   useEffect(() => {
     if (isFailed(game)) setDialog('fail');
   }, [game]);
+
+  /*
+   * 廣告備妥與否是 plugin 那邊的狀態，不會自己觸發重繪，所以在對話框
+   * 打開的當下取一次快照。開著的時候不再更新——按鈕中途冒出來或消失，
+   * 比少一次機會更讓人困惑。
+   */
+  useEffect(() => {
+    if (dialog === 'fail') setRewardOffered(isRewardedReady() && !revived);
+  }, [dialog, revived]);
+
+  /* 一關只能續一次，否則三根骨頭的代價就形同虛設 */
+  useEffect(() => {
+    setRevived(false);
+  }, [level]);
+
+  const handleWatchAd = useCallback(async () => {
+    const earned = await showRewarded();
+    // 只有真的看完才發骨頭；中途關掉就什麼都不給，這是獎勵式廣告的前提
+    if (!earned) return;
+    setRevived(true);
+    setDialog(null);
+    setGame((prev) => revive(prev));
+  }, []);
 
   /*
    * 快速連點同一格 = 放柯基，其餘都是切換叉號。
@@ -409,6 +476,7 @@ export function Game({
           setShownScore(0);
         }}
         onClose={() => setDialog(null)}
+        onWatchAd={rewardOffered ? () => void handleWatchAd() : null}
       />
     </div>
   );

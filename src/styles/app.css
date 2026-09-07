@@ -1362,3 +1362,14 @@ svg.cell-corgi .corgi-tongue {
     gap: 20px;
   }
 }
+
+/*
+ * 原生 App 的底部橫幅是疊在 WebView 之上的原生 view，網頁這邊完全不知道
+ * 它存在——不留空間的話，盤面最下面一列會被廣告蓋住而且點不到。
+ *
+ * 自適應橫幅的高度依裝置寬度而定，50–90dp 之間，取上限再加安全區。寧可
+ * 多留一點空白，也不要有一列柯基永遠按不下去。
+ */
+html.native .game {
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+}

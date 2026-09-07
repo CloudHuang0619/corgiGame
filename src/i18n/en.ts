@@ -36,6 +36,7 @@ export const en: Record<MessageKey, string> = {
   'fail.title': 'Out of Bones',
   'fail.body': 'Three wrong placements — this level restarts.',
   'fail.tip': 'Before placing, mark the row, column, colour region and all eight neighbours.',
+  'fail.watchAd': 'Watch an ad for one more bone',
   'fail.retry': 'Try Again',
 
   'settings.title': 'Settings',

@@ -11,3 +11,21 @@ dist/
 
 # 校正腳本產生的預覽圖，不需要進版控（art/raw/ 的原始素材要留）
 art/preview/
+
+# Capacitor / Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/release/
+
+# 簽章金鑰與密碼絕對不能進版控 —— 金鑰外流等於別人可以冒名更新你的 App，
+# 而 Play 上的套件名稱與金鑰是綁死的，換不掉
+*.keystore
+*.jks
+android/keystore.properties
+
+# 正式廣告單元 ID
+.env
+.env.production

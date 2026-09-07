@@ -36,6 +36,7 @@ export const ja: Record<MessageKey, string> = {
   'fail.title': 'ほねが尽きました',
   'fail.body': '3回まちがえたので、このレベルは最初からです。',
   'fail.tip': '置く前に、同じ行・列・色の範囲と周囲8マスに×を付けましょう。',
+  'fail.watchAd': '広告を見て骨を1本もらう',
   'fail.retry': 'もう一度',
 
   'settings.title': '設定',

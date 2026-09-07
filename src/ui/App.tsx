@@ -17,6 +17,7 @@ import {
 } from '../core/storage.ts';
 import type { PlayerProfile, Settings } from '../core/storage.ts';
 import { createTranslator } from '../i18n/index.ts';
+import { initAds } from '../ads/index.ts';
 
 import { LanguageDialog } from './dialogs/LanguageDialog.tsx';
 import { ProfileDialog } from './dialogs/ProfileDialog.tsx';
@@ -36,6 +37,16 @@ export function App() {
   const [level, setLevel] = useState(() => clampLevel(loadProfile().currentLevel));
 
   const t = useMemo(() => createTranslator(settings.locale), [settings.locale]);
+
+  /*
+   * 廣告初始化只跑一次，而且刻意放在最上層：UMP 同意流程必須在任何一次
+   * 廣告請求之前跑完，如果等到玩家進遊戲畫面才初始化，底部橫幅會搶在
+   * 同意表單前面送出請求。失敗只會讓廣告不出現（見 src/ads），
+   * 所以這裡不必處理錯誤。
+   */
+  useEffect(() => {
+    void initAds();
+  }, []);
 
   // 慢速播放做成 CSS 變數，柯基的動畫時長是 calc(Xms * var(--sprite-speed))，
   // 所以改這一個值就整批生效，不必把速度一路傳到最底層的元件

@@ -364,6 +364,20 @@ export function restart(state: GameState, now = Date.now()): GameState {
   return createGame(state.puzzle, now);
 }
 
+/**
+ * 續命：補一根骨頭，盤面原封不動。
+ *
+ * 保留已放的柯基與紅叉，是因為續命的價值就在「不必從頭推一遍」；連紅叉
+ * 都還在，玩家先前排除掉的可能性也還在。跟 `restart` 的差別是刻意的：
+ * 一個接續、一個歸零。
+ *
+ * 只在 lives 已耗盡時才有作用——沒失敗就不該能靠這條路囤命。
+ */
+export function revive(state: GameState, lives = 1): GameState {
+  if (!isFailed(state)) return state;
+  return { ...state, lives: Math.min(lives, MAX_LIVES) };
+}
+
 // ---------------------------------------------------------------------------
 // 測試工具（不屬於正式流程）
 // ---------------------------------------------------------------------------
