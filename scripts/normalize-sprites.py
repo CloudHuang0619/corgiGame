@@ -240,29 +240,86 @@ def main():
         )
 
 
-def split_single(path, cols, rows):
+def detect_bands(profile, min_gap):
+    """從一維的內容剖面找出連續區段，間隔小於 min_gap 的併回去。"""
+    out, start = [], None
+    for i, on in enumerate(profile):
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            out.append([start, i - 1])
+            start = None
+    if start is not None:
+        out.append([start, len(profile) - 1])
+
+    merged = []
+    for band in out:
+        if merged and band[0] - merged[-1][1] - 1 < min_gap:
+            merged[-1][1] = band[1]
+        else:
+            merged.append(band)
+    return [tuple(b) for b in merged]
+
+
+def band_edges(bands, limit):
+    """把相鄰兩段的中線當作格線，頭尾延伸到圖的邊緣。"""
+    edges = [0]
+    for a, b in zip(bands, bands[1:]):
+        edges.append((a[1] + b[0]) // 2)
+    edges.append(limit)
+    return edges
+
+
+# 三段的切分。每一項是 (輸出檔名, 佔幾排, 輸出時每排幾欄)。
+# 排數與素材的版面對應：第 1 排是登場、2–3 排待機、4–5 排嗅聞。
+SEGMENTS = [
+    ("corgi-start.png", 1, 8),
+    ("corgi-idle.png", 2, 8),
+    ("corgi-loop.png", 2, 8),
+]
+
+
+def split_single(path, min_gap=4):
     """
     把「三段畫在同一張圖」的素材切成三個 sheet。
 
-    這種素材不需要跨 sheet 縮放校正 —— 48 格畫在同一張圖上，角色比例本來
-    就一致。這裡只做兩件事：依影格數切段，以及用全圖的作用區統一裁切，
-    讓三段的取景完全相同。
+    這種素材不需要跨 sheet 縮放校正 —— 所有影格畫在同一張圖上，角色比例與
+    窗台高度本來就一致。這裡只做三件事：
+      1. 用內容帶偵測真正的格線（產圖工具的格距未必等分，平均分割會切歪）
+      2. 用全圖的作用區統一裁切，讓所有影格的取景完全相同
+      3. 依排數切成三段輸出
     """
     image = Image.open(path).convert("RGBA")
-    width, height = image.size
-    cell_w, cell_h = width / cols, height / rows
+    alpha = np.array(image)[:, :, 3]
+    height, width = alpha.shape
+
+    col_bands = detect_bands((alpha > ALPHA_THRESHOLD).sum(axis=0) > 0, min_gap)
+    row_bands = detect_bands((alpha > ALPHA_THRESHOLD).sum(axis=1) > 0, min_gap)
+    cols, rows = len(col_bands), len(row_bands)
+    print("偵測格線：%d 欄 × %d 排 = %d 格（來源 %dx%d）" % (cols, rows, cols * rows, width, height))
+
+    expected_rows = sum(seg[1] for seg in SEGMENTS)
+    if rows != expected_rows:
+        raise SystemExit(
+            "排數不符：偵測到 %d 排，但 SEGMENTS 需要 %d 排。請確認素材版面或調整 SEGMENTS。"
+            % (rows, expected_rows)
+        )
+
+    xs = band_edges(col_bands, width)
+    ys = band_edges(row_bands, height)
 
     tiles = []
-    for index in range(cols * rows):
-        r, c = divmod(index, cols)
-        tiles.append(
-            image.crop((round(c * cell_w), round(r * cell_h), round((c + 1) * cell_w), round((r + 1) * cell_h)))
-        )
+    for r in range(rows):
+        for c in range(cols):
+            tiles.append(image.crop((xs[c], ys[r], xs[c + 1], ys[r + 1])))
 
     boxes = [content_bbox(np.array(t)[:, :, 3]) for t in tiles]
     valid = [b for b in boxes if b]
     if not valid:
         raise SystemExit("整張圖都是空的")
+
+    # 作用區用「格內座標」的聯集。所有影格用同一個矩形裁，取景才會完全一致，
+    # 角色在段落內的移動（例如登場時從窗台下升起）也會完整保留。
     union = (
         min(b[0] for b in valid),
         min(b[1] for b in valid),
@@ -275,34 +332,36 @@ def split_single(path, cols, rows):
     scale = min((CELL * MAX_UNION_FILL) / union_w, ((CELL - BOTTOM_MARGIN) * MAX_UNION_FILL) / union_h)
     out_w, out_h = max(1, round(union_w * scale)), max(1, round(union_h * scale))
     dx, dy = (CELL - out_w) // 2, CELL - BOTTOM_MARGIN - out_h
+    print("  作用區 %dx%d，縮放 %.3f → %dx%d，單格 %d" % (union_w, union_h, scale, out_w, out_h, CELL))
 
-    print("單張素材 %dx%d，%d 欄 × %d 排 = %d 格" % (width, height, cols, rows, cols * rows))
-    print("  作用區 %dx%d，縮放 %.3f → %dx%d" % (union_w, union_h, scale, out_w, out_h))
+    cropped = [
+        t.crop((ux0, uy0, ux1 + 1, uy1 + 1)).resize((out_w, out_h), Image.LANCZOS) for t in tiles
+    ]
 
-    # 段落切分要與 src/ui/sprites.ts 的 frames 一致
-    segments = [("corgi-start.png", 0, 12, 6), ("corgi-idle.png", 12, 24, 12), ("corgi-loop.png", 24, 48, 6)]
-    for name, start, end, seg_cols in segments:
-        frames = tiles[start:end]
-        seg_rows = -(-len(frames) // seg_cols)
-        sheet = Image.new("RGBA", (CELL * seg_cols, CELL * seg_rows), (0, 0, 0, 0))
-        for i, tile in enumerate(frames):
+    row_cursor = 0
+    for name, seg_rows, seg_cols in SEGMENTS:
+        frames = cropped[row_cursor * cols : (row_cursor + seg_rows) * cols]
+        row_cursor += seg_rows
+        out_rows = -(-len(frames) // seg_cols)
+        sheet = Image.new("RGBA", (CELL * seg_cols, CELL * out_rows), (0, 0, 0, 0))
+        for i, frame in enumerate(frames):
             r, c = divmod(i, seg_cols)
-            cropped = tile.crop((ux0, uy0, ux1 + 1, uy1 + 1)).resize((out_w, out_h), Image.LANCZOS)
-            sheet.paste(cropped, (c * CELL + dx, r * CELL + dy), cropped)
-        out_path = os.path.join(OUT_DIR, name)
-        sheet.save(out_path)
-        print("  %-18s %d 格 = %d 欄 × %d 排，輸出 %dx%d" % (name, len(frames), seg_cols, seg_rows, sheet.width, sheet.height))
+            sheet.paste(frame, (c * CELL + dx, r * CELL + dy), frame)
+        sheet.save(os.path.join(OUT_DIR, name))
+        print(
+            "  %-18s %2d 格 = %d 欄 × %d 排，輸出 %dx%d"
+            % (name, len(frames), seg_cols, out_rows, sheet.width, sheet.height)
+        )
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--single", help="三段畫在同一張圖的素材路徑")
-    ap.add_argument("--cols", type=int, default=8)
-    ap.add_argument("--rows", type=int, default=6)
+    ap.add_argument("--min-gap", type=int, default=4, help="格線偵測時視為分隔的最小空白寬度")
     args = ap.parse_args()
 
     if args.single:
         os.makedirs(OUT_DIR, exist_ok=True)
-        split_single(args.single, args.cols, args.rows)
+        split_single(args.single, args.min_gap)
     else:
         main()

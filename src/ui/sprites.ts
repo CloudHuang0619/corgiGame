@@ -19,12 +19,15 @@ export interface SheetSpec {
   readonly durationMs: number;
 }
 
-// 影格數要跟素材一致。素材由 scripts/normalize-sprites.py 校正過，
-// 校正後格子是正方形、格線切齊，前端才能從長寬比推出排版。
+// 影格數要跟素材一致。素材由 scripts/normalize-sprites.py 切割校正，
+// 輸出的格子是正方形、格線切齊，前端才能從長寬比推出排版。
+//
+// 長度取成三段都約 16 fps。原本規劃 LOOP 是 1.5 秒，但素材只有 16 格，
+// 1.5 秒等於 10.7 fps 會看得出頓格，所以縮到 1.2 秒。
 export const SHEETS: Record<SpritePhase, SheetSpec> = {
-  start: { file: 'corgi-start.png', frames: 12, durationMs: 500 },
-  idle: { file: 'corgi-idle.png', frames: 12, durationMs: 1000 },
-  loop: { file: 'corgi-loop.png', frames: 24, durationMs: 1500 },
+  start: { file: 'corgi-start.png', frames: 8, durationMs: 500 },
+  idle: { file: 'corgi-idle.png', frames: 16, durationMs: 1000 },
+  loop: { file: 'corgi-loop.png', frames: 16, durationMs: 1200 },
 };
 
 /** START 播完接 IDLE；之後 IDLE 與 LOOP 互相接力 */

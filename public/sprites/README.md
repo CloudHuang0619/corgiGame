@@ -7,9 +7,16 @@
 
 | 檔名 | 排版 | 影格數 | 長度 | 說明 |
 | --- | --- | --- | --- | --- |
-| `corgi-start.png` | 6×2 | 12 | 0.5s | 從下方彈出、吐一下舌頭。放下柯基時播一次 |
-| `corgi-idle.png` | 12×1 | 12 | 1.0s | 待機 |
-| `corgi-loop.png` | 6×4 | 24 | 1.5s | 嗅聞 |
+| `corgi-start.png` | 8×1 | 8 | 0.5s | 從窗台下方升起、吐一下舌頭。放下柯基時播一次 |
+| `corgi-idle.png` | 8×2 | 16 | 1.0s | 待機、眨眼 |
+| `corgi-loop.png` | 8×2 | 16 | 1.2s | 往上嗅、轉頭側嗅、回正 |
+
+三段都約 16 fps。這三個檔案不是手工放進來的，是由 `art/raw/corgi-all.png`
+（8 欄 × 5 排 = 40 格的單張素材）切出來的：
+
+```bash
+python scripts/normalize-sprites.py --single art/raw/corgi-all.png
+```
 
 播放順序：`START →（IDLE → LOOP）→（IDLE → LOOP）→ …`
 要改影格數或長度，改 `src/ui/sprites.ts` 的 `SHEETS`。
@@ -29,23 +36,16 @@
 - 角色在每格中的位置要對齊，否則播放時會抖動
 - 建議單格 128×128 或 256×256（9×9 盤面上一格約 40–90 px，128 已經夠用）
 
-## 對不齊也沒關係
+## 換素材
 
-實際收到的三張都不符合上面的要求（畫布留白過多、排距不等分、格線與編號被
-畫進圖裡），所以有一支校正腳本負責把它們整乾淨：
+素材規格與可直接貼給圖像模型的提示詞在 `art/PROMPT.md`。
 
-```bash
-python scripts/normalize-sprites.py public/sprites/corgi-start.png --cols 6 --rows 2
-python scripts/normalize-sprites.py public/sprites/corgi-idle.png  --cols 12 --rows 1
-python scripts/normalize-sprites.py public/sprites/corgi-loop.png  --cols 6 --rows 4     --strip-grid 3 --strip-label 95x62
-```
+**三段畫在同一張圖上**是首選：同一張圖裡的角色比例天然一致，而且每格都畫上
+窗台的話，那條線就是可靠的對齊基準。分三次產的素材比例會不一致，校正只能逼近。
 
-原圖會備份到 `art/raw/`，之後每次校正都從那裡讀 —— 拿校正過的結果再校正一次
-只會愈跑愈糟。`--strip-grid` 裁掉每格四周的格線，`--strip-label` 清掉左上角的
-編號。換新素材時把檔案放進 `public/sprites/`、刪掉 `art/raw/` 裡的同名舊檔，
-再跑一次即可。
-
-校正後記得確認 `src/ui/sprites.ts` 的 `frames` 與實際格數一致。
+換素材的流程：把新圖放進 `art/raw/`，跑上面那行指令，再確認
+`src/ui/sprites.ts` 的 `frames` 與 `scripts/normalize-sprites.py` 的 `SEGMENTS`
+跟實際版面一致。
 
 ## 換成其他格式
 
