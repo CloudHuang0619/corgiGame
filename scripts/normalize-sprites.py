@@ -261,15 +261,6 @@ def detect_bands(profile, min_gap):
     return [tuple(b) for b in merged]
 
 
-def band_edges(bands, limit):
-    """把相鄰兩段的中線當作格線，頭尾延伸到圖的邊緣。"""
-    edges = [0]
-    for a, b in zip(bands, bands[1:]):
-        edges.append((a[1] + b[0]) // 2)
-    edges.append(limit)
-    return edges
-
-
 # 三段的切分。每一項是 (輸出檔名, 佔幾排, 輸出時每排幾欄)。
 # 排數與素材的版面對應：第 1 排是登場、2–3 排待機、4–5 排嗅聞。
 SEGMENTS = [
@@ -279,15 +270,47 @@ SEGMENTS = [
 ]
 
 
+def find_ledge(alpha):
+    """
+    找出這一格裡「窗台」那條橫木，回傳 (y, 左, 右)。
+
+    窗台是畫面裡最寬的一條橫向筆畫 —— 比柯基的耳朵和前腳都寬。所以逐列量
+    不透明像素的水平跨距，取跨距接近最大值的那些列裡「最下面」的一條：
+    柯基身上偶爾也會有同樣寬的一列，但窗台一定在最底下。
+
+    用窗台當錨點，是因為它在每一格都存在、位置固定，而且實測偵測誤差只有
+    ±1 px。角色本身會上下移動（登場時從窗台下升起），不能拿來對齊。
+    """
+    best = None
+    max_span = 0
+    spans = []
+    for y in range(alpha.shape[0]):
+        xs = np.nonzero(alpha[y] > ALPHA_THRESHOLD)[0]
+        if len(xs) == 0:
+            spans.append(None)
+            continue
+        span = (int(xs[0]), int(xs[-1]))
+        spans.append(span)
+        max_span = max(max_span, span[1] - span[0] + 1)
+
+    for y, span in enumerate(spans):
+        if span is None:
+            continue
+        if (span[1] - span[0] + 1) >= max_span * 0.95:
+            best = (y, span[0], span[1])
+    return best
+
+
 def split_single(path, min_gap=4):
     """
     把「三段畫在同一張圖」的素材切成三個 sheet。
 
-    這種素材不需要跨 sheet 縮放校正 —— 所有影格畫在同一張圖上，角色比例與
-    窗台高度本來就一致。這裡只做三件事：
-      1. 用內容帶偵測真正的格線（產圖工具的格距未必等分，平均分割會切歪）
-      2. 用全圖的作用區統一裁切，讓所有影格的取景完全相同
-      3. 依排數切成三段輸出
+    對齊完全以窗台為準，不靠格線。原因是產圖工具的排距未必等分 —— 實測這張
+    素材五排的窗台在 y=194/379/562/734/898，排距是 185/183/172/164，用格線
+    中線切格會讓每格的高度與原點都不同，窗台在格內的相對位置就跟著跑，
+    播放時看起來就是角色一直上下抖。
+
+    以窗台為錨點之後，格線只用來把畫布分成幾格，切得準不準都不影響對齊。
     """
     image = Image.open(path).convert("RGBA")
     alpha = np.array(image)[:, :, 3]
@@ -305,52 +328,70 @@ def split_single(path, min_gap=4):
             % (rows, expected_rows)
         )
 
-    xs = band_edges(col_bands, width)
-    ys = band_edges(row_bands, height)
+    # 逐格找出窗台錨點與內容範圍，全部換算成「相對於窗台」的座標
+    anchors = []
+    rel_boxes = []
+    for r, (ry0, ry1) in enumerate(row_bands):
+        for c, (cx0, cx1) in enumerate(col_bands):
+            sub = alpha[ry0 : ry1 + 1, cx0 : cx1 + 1]
+            ledge = find_ledge(sub)
+            box = content_bbox(sub)
+            if ledge is None or box is None:
+                raise SystemExit("第 %d 格找不到內容或窗台" % (r * cols + c + 1))
+            ly, lx0, lx1 = ledge
+            anchor_x = cx0 + (lx0 + lx1) / 2.0
+            anchor_y = ry0 + ly
+            anchors.append((anchor_x, anchor_y))
+            rel_boxes.append(
+                (
+                    cx0 + box[0] - anchor_x,
+                    ry0 + box[1] - anchor_y,
+                    cx0 + box[2] - anchor_x,
+                    ry0 + box[3] - anchor_y,
+                )
+            )
 
-    tiles = []
-    for r in range(rows):
-        for c in range(cols):
-            tiles.append(image.crop((xs[c], ys[r], xs[c + 1], ys[r + 1])))
+    ledge_ys = [round(a[1]) for a in anchors]
+    print("  窗台 y：%d ~ %d（每排內誤差即為對齊精度）" % (min(ledge_ys), max(ledge_ys)))
 
-    boxes = [content_bbox(np.array(t)[:, :, 3]) for t in tiles]
-    valid = [b for b in boxes if b]
-    if not valid:
-        raise SystemExit("整張圖都是空的")
+    # 共用視窗：所有影格相對窗台的內容範圍聯集
+    rel_left = min(b[0] for b in rel_boxes)
+    rel_top = min(b[1] for b in rel_boxes)
+    rel_right = max(b[2] for b in rel_boxes)
+    rel_bottom = max(b[3] for b in rel_boxes)
+    win_w = rel_right - rel_left + 1
+    win_h = rel_bottom - rel_top + 1
 
-    # 作用區用「格內座標」的聯集。所有影格用同一個矩形裁，取景才會完全一致，
-    # 角色在段落內的移動（例如登場時從窗台下升起）也會完整保留。
-    union = (
-        min(b[0] for b in valid),
-        min(b[1] for b in valid),
-        max(b[2] for b in valid),
-        max(b[3] for b in valid),
-    )
-    ux0, uy0, ux1, uy1 = union
-    union_w, union_h = ux1 - ux0 + 1, uy1 - uy0 + 1
-
-    scale = min((CELL * MAX_UNION_FILL) / union_w, ((CELL - BOTTOM_MARGIN) * MAX_UNION_FILL) / union_h)
-    out_w, out_h = max(1, round(union_w * scale)), max(1, round(union_h * scale))
+    scale = min((CELL * MAX_UNION_FILL) / win_w, ((CELL - BOTTOM_MARGIN) * MAX_UNION_FILL) / win_h)
+    out_w, out_h = max(1, round(win_w * scale)), max(1, round(win_h * scale))
     dx, dy = (CELL - out_w) // 2, CELL - BOTTOM_MARGIN - out_h
-    print("  作用區 %dx%d，縮放 %.3f → %dx%d，單格 %d" % (union_w, union_h, scale, out_w, out_h, CELL))
+    print(
+        "  共用視窗 %.0fx%.0f（相對窗台 左%.0f 上%.0f）縮放 %.3f → %dx%d，單格 %d"
+        % (win_w, win_h, rel_left, rel_top, scale, out_w, out_h, CELL)
+    )
 
-    cropped = [
-        t.crop((ux0, uy0, ux1 + 1, uy1 + 1)).resize((out_w, out_h), Image.LANCZOS) for t in tiles
-    ]
+    frames = []
+    for anchor_x, anchor_y in anchors:
+        # 裁切框以窗台為原點推算，所以每一格的窗台都會落在輸出的同一個位置。
+        # 超出畫布的部分 PIL 會補透明，不必特別處理邊界。
+        left = round(anchor_x + rel_left)
+        top = round(anchor_y + rel_top)
+        crop = image.crop((left, top, left + round(win_w), top + round(win_h)))
+        frames.append(crop.resize((out_w, out_h), Image.LANCZOS))
 
     row_cursor = 0
     for name, seg_rows, seg_cols in SEGMENTS:
-        frames = cropped[row_cursor * cols : (row_cursor + seg_rows) * cols]
+        chunk = frames[row_cursor * cols : (row_cursor + seg_rows) * cols]
         row_cursor += seg_rows
-        out_rows = -(-len(frames) // seg_cols)
+        out_rows = -(-len(chunk) // seg_cols)
         sheet = Image.new("RGBA", (CELL * seg_cols, CELL * out_rows), (0, 0, 0, 0))
-        for i, frame in enumerate(frames):
+        for i, frame in enumerate(chunk):
             r, c = divmod(i, seg_cols)
             sheet.paste(frame, (c * CELL + dx, r * CELL + dy), frame)
         sheet.save(os.path.join(OUT_DIR, name))
         print(
             "  %-18s %2d 格 = %d 欄 × %d 排，輸出 %dx%d"
-            % (name, len(frames), seg_cols, out_rows, sheet.width, sheet.height)
+            % (name, len(chunk), seg_cols, out_rows, sheet.width, sheet.height)
         )
 
 

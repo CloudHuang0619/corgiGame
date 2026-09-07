@@ -56,12 +56,19 @@ export function CorgiSprite({ sheets, className, still = false }: CorgiSpritePro
    * 多排時要兩條動畫；單排就只有橫向那條。
    * steps(1, jump-none) 是無效語法，所以 rows === 1 必須整條省略。
    */
+  /*
+   * 時長乘上 --sprite-speed（預設 1）。慢速播放只要改那個 CSS 變數，
+   * 不必動任何 React 狀態；而段落接力是靠 animationend 觸發的，
+   * 事件會在放慢後的實際時間點才發生，接力順序自動跟著慢下來。
+   */
+  const dur = (ms: number) => `calc(${ms}ms * var(--sprite-speed, 1))`;
+
   const animation = still
     ? undefined
     : rows > 1
-      ? `sprite-x ${durationMs / rows}ms steps(${cols}, jump-none) ${soloLoop ? 'infinite' : rows} both, ` +
-        `sprite-y ${durationMs}ms steps(${rows}, jump-none) ${soloLoop ? 'infinite' : '1'} both`
-      : `sprite-x ${durationMs}ms steps(${cols}, jump-none) ${soloLoop ? 'infinite' : '1'} both`;
+      ? `sprite-x ${dur(durationMs / rows)} steps(${cols}, jump-none) ${soloLoop ? 'infinite' : rows} both, ` +
+        `sprite-y ${dur(durationMs)} steps(${rows}, jump-none) ${soloLoop ? 'infinite' : '1'} both`
+      : `sprite-x ${dur(durationMs)} steps(${cols}, jump-none) ${soloLoop ? 'infinite' : '1'} both`;
 
   return (
     <div

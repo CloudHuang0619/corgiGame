@@ -70,6 +70,7 @@ export const zhHant = {
 
   // 測試工具（不屬於正式流程）
   'dev.title': '測試工具',
+  'dev.slowMotion': '慢速 ×3',
   'dev.undo': '復原',
   'dev.reveal': '看答案',
   'dev.hideAnswer': '收起答案',

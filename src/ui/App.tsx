@@ -5,7 +5,7 @@
  * 不必為此引進路由函式庫。玩家資料與設定放在這裡，是因為兩個畫面都要用。
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { clampLevel } from '../core/levels.ts';
 import {
@@ -36,6 +36,12 @@ export function App() {
   const [level, setLevel] = useState(() => clampLevel(loadProfile().currentLevel));
 
   const t = useMemo(() => createTranslator(settings.locale), [settings.locale]);
+
+  // 慢速播放做成 CSS 變數，柯基的動畫時長是 calc(Xms * var(--sprite-speed))，
+  // 所以改這一個值就整批生效，不必把速度一路傳到最底層的元件
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sprite-speed', settings.slowMotion ? '3' : '1');
+  }, [settings.slowMotion]);
 
   const updateProfile = useCallback((next: PlayerProfile) => {
     setProfile(next);

@@ -62,6 +62,7 @@ export const en: Record<MessageKey, string> = {
   'language.confirm': 'Done',
 
   'dev.title': 'Dev Tools',
+  'dev.slowMotion': 'Slow ×3',
   'dev.undo': 'Undo',
   'dev.reveal': 'Show Answer',
   'dev.hideAnswer': 'Hide Answer',

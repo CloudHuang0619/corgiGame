@@ -133,6 +133,8 @@ export interface Settings {
   /** 色盲輔助：在區域色塊上疊加圖案紋理 */
   readonly patternMode: boolean;
   readonly locale: string;
+  /** 測試工具：柯基動畫放慢三倍，用來逐格檢查對齊 */
+  readonly slowMotion: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -142,6 +144,7 @@ const DEFAULT_SETTINGS: Settings = {
   vibration: true,
   patternMode: false,
   locale: 'zh-Hant',
+  slowMotion: false,
 };
 
 export function loadSettings(): Settings {

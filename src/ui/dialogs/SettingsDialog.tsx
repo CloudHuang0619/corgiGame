@@ -151,6 +151,13 @@ export function SettingsDialog({
           <h3>{t('dev.title')}</h3>
           <p className="dev-note">{t('dev.note')}</p>
           <div className="dev-row">
+            <button
+              type="button"
+              className={['btn', settings.slowMotion ? 'btn-primary' : 'btn-ghost'].join(' ')}
+              onClick={() => onChange({ ...settings, slowMotion: !settings.slowMotion })}
+            >
+              {t('dev.slowMotion')}
+            </button>
             <button type="button" className="btn btn-ghost" onClick={dev.onUndo} disabled={!dev.canUndo}>
               {t('dev.undo')}
             </button>

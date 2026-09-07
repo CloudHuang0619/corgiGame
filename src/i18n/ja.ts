@@ -62,6 +62,7 @@ export const ja: Record<MessageKey, string> = {
   'language.confirm': '決定',
 
   'dev.title': '開発ツール',
+  'dev.slowMotion': 'スロー ×3',
   'dev.undo': '元に戻す',
   'dev.reveal': '答えを見る',
   'dev.hideAnswer': '答えを隠す',
