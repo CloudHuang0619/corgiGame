@@ -24,6 +24,8 @@ export const zhHant = {
   'game.hintRegion': '這個顏色區域',
 
   // 結算
+  'clear.toast': '思路敏銳，幾近完美。',
+  'clear.boneTally': '骨頭',
   'clear.flawless': '無懈可擊',
   'clear.flawlessSub': '完全乾淨的紀錄！你的邏輯真棒！',
   'clear.good': '順利過關',

@@ -8,6 +8,7 @@
  */
 
 import { Bone } from '../Bone.tsx';
+import { Confetti } from '../ClearSequence.tsx';
 import { Corgi } from '../Corgi.tsx';
 import type { Translate } from '../../i18n/index.ts';
 import { MAX_LIVES } from '../../core/game.ts';
@@ -37,6 +38,7 @@ export function ClearDialog({
   return (
     <Dialog open={open} title={t(`clear.${tier}` as const)} onClose={onClose}>
       <div className="clear">
+        <Confetti />
         <div className="clear-corgis">
           <Corgi />
           <Corgi />

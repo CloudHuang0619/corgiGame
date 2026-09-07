@@ -21,6 +21,8 @@ export const en: Record<MessageKey, string> = {
   'game.hintCol': 'Column {n}',
   'game.hintRegion': 'This colour region',
 
+  'clear.toast': 'Sharp thinking — almost flawless.',
+  'clear.boneTally': 'bones',
   'clear.flawless': 'Flawless',
   'clear.flawlessSub': 'A perfectly clean record. Sharp logic!',
   'clear.good': 'Level Clear',

@@ -21,6 +21,8 @@ export const ja: Record<MessageKey, string> = {
   'game.hintCol': '{n} 列目',
   'game.hintRegion': 'この色の範囲',
 
+  'clear.toast': '冴えた読み、ほぼ完璧です。',
+  'clear.boneTally': 'ほね',
   'clear.flawless': 'パーフェクト',
   'clear.flawlessSub': 'ミスなしクリア！ 見事な推理です。',
   'clear.good': 'クリア',

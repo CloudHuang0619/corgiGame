@@ -518,6 +518,135 @@ button:disabled {
   }
 }
 
+/* 通關慶祝序列 */
+
+.stat-score {
+  position: relative;
+}
+
+/* 分數處噴發的星光。每一顆的終點由 --dx/--dy 決定，共用同一組 keyframes */
+.sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sparkles i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: sparkle 700ms ease-out forwards;
+}
+
+@keyframes sparkle {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.2);
+  }
+}
+
+/* 結算時生命藥丸淡出，位置讓給骨頭入帳 */
+.lives-pill.is-fading {
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.bone-tally {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  animation: tally-in 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.bone-tally-count {
+  font-size: 1.15rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-deep);
+}
+
+.bone-tally-label {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+@keyframes tally-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+}
+
+.clear-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(160px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(49, 33, 32, 0.94);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  white-space: nowrap;
+  animation: tally-in 0.35s ease-out;
+}
+
+/*
+ * 彩帶。每一片的顏色、起點、飄落時間、旋轉都由 inline style 隨機決定，
+ * 共用這一組 keyframes —— 不必為幾十片各寫一段動畫。
+ */
+.confetti {
+  position: absolute;
+  inset: -20px -20px auto;
+  height: 260px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.confetti i {
+  position: absolute;
+  top: -16px;
+  border-radius: 2px;
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--drift), 260px) rotate(var(--spin));
+  }
+}
+
 /* 提示 */
 
 .hint-button {
@@ -957,6 +1086,7 @@ button:disabled {
 
 .clear,
 .fail {
+  position: relative;
   text-align: center;
 }
 
@@ -967,17 +1097,22 @@ button:disabled {
   gap: 6px;
 }
 
-.clear-corgis svg {
+/*
+ * 用 > * 而不是 svg：柯基有兩種實作，sprite 版渲染的是 div、手繪備援才是 svg。
+ * 只選 svg 的話 sprite 版拿不到尺寸，高度會變成 0 而整排消失。
+ */
+.clear-corgis > * {
   width: 56px;
   height: 56px;
+  flex: none;
   animation: bob 1.1s ease-in-out infinite;
 }
 
-.clear-corgis svg:nth-child(2) {
+.clear-corgis > *:nth-child(2) {
   animation-delay: 0.12s;
 }
 
-.clear-corgis svg:nth-child(3) {
+.clear-corgis > *:nth-child(3) {
   animation-delay: 0.24s;
 }
 
@@ -1194,12 +1329,16 @@ svg.cell-corgi .corgi-tongue {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sparkles i,
+  .confetti i,
+  .bone-tally,
+  .clear-toast,
   .corgi-sprite,
   svg.cell-corgi .corgi-root,
   svg.cell-corgi .corgi-head,
   svg.cell-corgi .corgi-tongue,
   .board.is-entering .cell,
-  .clear-corgis svg,
+  .clear-corgis > *,
   .cell.is-hint,
   .score-float {
     animation: none;

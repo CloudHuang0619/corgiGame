@@ -35,6 +35,7 @@ import type { Translate } from '../../i18n/index.ts';
 
 import { Board } from '../Board.tsx';
 import { Bone } from '../Bone.tsx';
+import { BoneTally, ClearToast, Sparkles, useClearSequence } from '../ClearSequence.tsx';
 import { Corgi } from '../Corgi.tsx';
 import { RuleChips } from '../RuleChips.tsx';
 import { ClearDialog } from '../dialogs/ClearDialog.tsx';
@@ -112,15 +113,27 @@ export function Game({
     return () => window.clearInterval(id);
   }, [game]);
 
-  // 通關：記錄成績、清掉進行中存檔、跳結算
+  // 通關：記錄成績、清掉進行中存檔，接著跑慶祝序列（見 ClearSequence）
   const clearedRef = useRef(false);
+  const cleared = game.finishedAt !== null;
+  const clearStage = useClearSequence(cleared);
+
   useEffect(() => {
     if (game.finishedAt === null || clearedRef.current) return;
     clearedRef.current = true;
     clearSession();
     onCleared(level, game.score, game.lives, game.finishedAt - game.startedAt);
-    setDialog('clear');
   }, [game.finishedAt, game.score, game.lives, game.startedAt, level, onCleared]);
+
+  // 序列走到最後一拍才開慶祝畫面
+  useEffect(() => {
+    if (clearStage === 'celebration') setDialog('clear');
+  }, [clearStage]);
+
+  // 通關的瞬間分數就跳到最終值，不必等 +N 飄完
+  useEffect(() => {
+    if (cleared) setShownScore(game.score);
+  }, [cleared, game.score]);
 
   useEffect(() => {
     clearedRef.current = false;
@@ -238,9 +251,10 @@ export function Game({
             <span className="stat-label">{t('game.level')}</span>
             <span className="stat-value">{level}</span>
           </div>
-          <div>
+          <div className="stat-score">
             <span className="stat-label">{t('game.score')}</span>
             <span className="stat-value">{shownScore.toLocaleString()}</span>
+            {clearStage !== null && <Sparkles />}
           </div>
         </div>
 
@@ -264,7 +278,10 @@ export function Game({
             <b>{game.catsPlaced}</b>/{puzzle.size}
           </span>
         </div>
-        <div className="pill lives-pill" aria-label={`${game.lives}`}>
+        <div
+          className={['pill', 'lives-pill', clearStage ? 'is-fading' : ''].filter(Boolean).join(' ')}
+          aria-label={`${game.lives}`}
+        >
           {Array.from({ length: MAX_LIVES }, (_, i) => (
             <Bone key={i} spent={i >= game.lives} className="life-bone" />
           ))}
@@ -292,6 +309,11 @@ export function Game({
           entering={entering}
         />
       </div>
+
+      {(clearStage === 'bones' || clearStage === 'toast') && (
+        <BoneTally count={game.lives} label={t('clear.boneTally')} />
+      )}
+      {clearStage === 'toast' && <ClearToast t={t} />}
 
       {hint && (
         <div className="hint-overlay" role="dialog" aria-label={t('game.hintApply')}>
