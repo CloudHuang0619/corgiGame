@@ -1,24 +1,24 @@
 /**
  * 生成器容量測試：問「產到幾關會開始重複」。
  *
- *   npx tsx scripts/capacity.ts            # 每個難度目標 500 關
+ *   npx tsx scripts/capacity.ts             # 每個盤面大小目標 300 張
  *   npx tsx scripts/capacity.ts --target 2000
  *
  * 量三件事：
- *   1. 撞到多少次重複（同一組區域配置）才湊滿目標關數
- *   2. 平均每關要試幾個 seed、花多少時間
+ *   1. 撞到多少次重複（同一組區域配置）才湊滿目標張數
+ *   2. 平均每張要花多少時間
  *   3. 底層的解空間有多大（合法排列數），這是理論上限的地板
  */
 
-import { DIFFICULTY_SPECS, generatePuzzle } from '../src/core/generator.ts';
-import type { DifficultyId } from '../src/core/types.ts';
+import { generatePuzzle, getLevelSpec } from '../src/core/generator.ts';
+import { LAST_LEVEL } from '../src/core/levels.ts';
 
 function parseTarget(): number {
   const args = process.argv.slice(2);
   const i = args.indexOf('--target');
-  if (i === -1) return 500;
+  if (i === -1) return 300;
   const value = Number(args[i + 1]);
-  return Number.isFinite(value) ? value : 500;
+  return Number.isFinite(value) ? value : 300;
 }
 
 /** 合法排列數：每列每欄一隻、且相鄰兩列欄差 >= 2 的排列有幾種。 */
@@ -39,11 +39,25 @@ function countValidPermutations(n: number): number {
   return total;
 }
 
-const target = parseTarget();
-console.log(`目標：每個難度 ${target} 關\n`);
+/** 關卡曲線上出現過的每一種（尺寸, 技巧）組合，各挑一個代表關卡來測。 */
+function samplePoints(): { level: number; size: number; technique: number }[] {
+  const seen = new Set<string>();
+  const points: { level: number; size: number; technique: number }[] = [];
+  for (let level = 1; level <= Math.max(LAST_LEVEL, 30); level += 1) {
+    const spec = getLevelSpec(level);
+    const k = `${spec.size}-${spec.technique}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    points.push({ level, size: spec.size, technique: spec.technique });
+  }
+  return points;
+}
 
-for (const spec of DIFFICULTY_SPECS) {
-  const permutations = countValidPermutations(spec.size);
+const target = parseTarget();
+console.log(`目標：每種盤面 ${target} 張\n`);
+
+for (const point of samplePoints()) {
+  const permutations = countValidPermutations(point.size);
 
   const seen = new Set<string>();
   let duplicates = 0;
@@ -51,14 +65,11 @@ for (const spec of DIFFICULTY_SPECS) {
   let seedsTried = 0;
   let seed = 1;
   const t0 = Date.now();
-  // 記錄「第 N 關」時累積撞了幾次重複，用來看重複率怎麼隨規模上升
-  const milestones: string[] = [];
-  const marks = new Set([50, 100, 250, 500, 1000, 2000].filter((m) => m <= target));
 
   while (seen.size < target && seedsTried < target * 200) {
     seedsTried += 1;
     seed += 7919;
-    const puzzle = generatePuzzle(spec.id as DifficultyId, seed, { maxAttempts: 400 });
+    const puzzle = generatePuzzle(point.level, seed, { maxAttempts: 400 });
     if (!puzzle) {
       failures += 1;
       continue;
@@ -69,18 +80,13 @@ for (const spec of DIFFICULTY_SPECS) {
       continue;
     }
     seen.add(fingerprint);
-    if (marks.has(seen.size)) {
-      milestones.push(`${seen.size}關時累積重複 ${duplicates} 次`);
-    }
   }
 
   const ms = Date.now() - t0;
-  console.log(`${spec.name} (${spec.size}x${spec.size})`);
+  console.log(`${point.size}×${point.size}（技巧 ${point.technique}，以第 ${point.level} 關為樣本）`);
   console.log(`  合法排列數（解空間地板）: ${permutations.toLocaleString()}`);
-  console.log(`  產出不重複關卡: ${seen.size}`);
+  console.log(`  產出不重複盤面: ${seen.size}`);
   console.log(`  重複撞擊: ${duplicates} 次   生成失敗: ${failures} 次`);
-  console.log(`  重複率: ${((duplicates / Math.max(1, seedsTried)) * 100).toFixed(2)}%`);
-  console.log(`  耗時: ${(ms / 1000).toFixed(1)}s   平均每關 ${(ms / Math.max(1, seen.size)).toFixed(1)}ms`);
-  if (milestones.length > 0) console.log(`  ${milestones.join(' / ')}`);
+  console.log(`  耗時: ${(ms / 1000).toFixed(1)}s   平均每張 ${(ms / Math.max(1, seen.size)).toFixed(1)}ms`);
   console.log();
 }

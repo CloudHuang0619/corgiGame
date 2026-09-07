@@ -1,319 +1,122 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+/**
+ * 畫面切換與全域狀態
+ *
+ * 只有三個畫面（載入 → 首頁 → 遊戲），用一個字串狀態切換就夠，
+ * 不必為此引進路由函式庫。玩家資料與設定放在這裡，是因為兩個畫面都要用。
+ */
 
-import { DIFFICULTY_SPECS } from '../core/generator.ts';
+import { useCallback, useMemo, useState } from 'react';
+
+import { clampLevel } from '../core/levels.ts';
 import {
-  applyMarkStroke,
-  conflictCells,
-  corgiPositions,
-  createGame,
-  cycleCell,
-  key,
-  elapsedMs,
-  formatTime,
-  getHint,
-  isFailed,
-  isLocked,
-  MAX_LIVES,
-  restart as restartGame,
-  revealSolution,
-  undo as undoGame,
-  markHintUsed,
-} from '../core/game.ts';
-import type { GameState } from '../core/game.ts';
-import { LEVELS } from '../core/levels.ts';
-import {
-  loadProgress,
+  loadProfile,
+  loadSettings,
   recordClear,
-  rememberPosition,
-  saveProgress,
+  saveProfile,
+  saveSettings,
 } from '../core/storage.ts';
-import type { Progress } from '../core/storage.ts';
-import type { DifficultyId } from '../core/types.ts';
+import type { PlayerProfile, Settings } from '../core/storage.ts';
+import { createTranslator } from '../i18n/index.ts';
 
-import { Board } from './Board.tsx';
-import { Bone } from './Bone.tsx';
-import { Corgi } from './Corgi.tsx';
-import { FailDialog } from './FailDialog.tsx';
-import { LevelDialog } from './LevelDialog.tsx';
-import { RulesDialog } from './RulesDialog.tsx';
-import { Toolbar } from './Toolbar.tsx';
-import { WinDialog } from './WinDialog.tsx';
+import { LanguageDialog } from './dialogs/LanguageDialog.tsx';
+import { ProfileDialog } from './dialogs/ProfileDialog.tsx';
+import { SettingsDialog } from './dialogs/SettingsDialog.tsx';
+import { Game } from './screens/Game.tsx';
+import { Home } from './screens/Home.tsx';
+import { Splash } from './screens/Splash.tsx';
 
-type DialogName = 'levels' | 'rules' | 'win' | 'fail' | null;
+type Screen = 'splash' | 'home' | 'game';
+type HomeDialog = 'settings' | 'profile' | 'language' | null;
 
 export function App() {
-  const [progress, setProgress] = useState<Progress>(() => loadProgress());
-  const [difficulty, setDifficulty] = useState<DifficultyId>(() => progress.lastDifficulty);
-  const [levelIndex, setLevelIndex] = useState(() => progress.lastLevel);
-  const [game, setGame] = useState<GameState>(() =>
-    createGame(LEVELS[progress.lastDifficulty]![progress.lastLevel] ?? LEVELS.easy[0]!),
-  );
-  const [dialog, setDialog] = useState<DialogName>(null);
-  const [status, setStatus] = useState('先從已經就位的柯基開始推理。');
-  const [hintCell, setHintCell] = useState<{ row: number; col: number } | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const [screen, setScreen] = useState<Screen>('splash');
+  const [profile, setProfile] = useState<PlayerProfile>(() => loadProfile());
+  const [settings, setSettings] = useState<Settings>(() => loadSettings());
+  const [dialog, setDialog] = useState<HomeDialog>(null);
+  const [level, setLevel] = useState(() => clampLevel(loadProfile().currentLevel));
 
-  // 剛通關的那一刻要判斷是不是新紀錄，得在寫入進度「之前」比對
-  const newBestRef = useRef(false);
+  const t = useMemo(() => createTranslator(settings.locale), [settings.locale]);
 
-  const levels = LEVELS[difficulty] ?? [];
-  const conflicts = useMemo(() => conflictCells(game), [game]);
-  const placed = useMemo(() => corgiPositions(game).length, [game]);
-  const finished = game.finishedAt !== null;
-  const failed = isFailed(game);
+  const updateProfile = useCallback((next: PlayerProfile) => {
+    setProfile(next);
+    saveProfile(next);
+  }, []);
 
-  // 計時器：只在進行中跑，通關後就不必再每秒重繪
-  useEffect(() => {
-    if (finished || failed) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [finished, failed]);
+  const updateSettings = useCallback((next: Settings) => {
+    setSettings(next);
+    saveSettings(next);
+  }, []);
 
-  const loadLevel = useCallback(
-    (nextDifficulty: DifficultyId, index: number) => {
-      const puzzle = LEVELS[nextDifficulty]?.[index];
-      if (!puzzle) return;
-      setDifficulty(nextDifficulty);
-      setLevelIndex(index);
-      setGame(createGame(puzzle));
-      setHintCell(null);
-      setStatus('先從已經就位的柯基開始推理。');
-      setNow(Date.now());
-      setProgress((prev) => {
-        const next = rememberPosition(prev, nextDifficulty, index);
-        saveProgress(next);
+  const handleCleared = useCallback(
+    (clearedLevel: number, score: number, livesLeft: number, elapsed: number) => {
+      setProfile((prev) => {
+        const next = recordClear(prev, clearedLevel, score, livesLeft, elapsed);
+        saveProfile(next);
         return next;
       });
     },
     [],
   );
 
-  // 通關時記錄成績並跳出結算
-  useEffect(() => {
-    if (game.finishedAt === null) return;
-    const ms = game.finishedAt - game.startedAt;
-    const previousBest = progress.records[difficulty]?.[levelIndex]?.bestMs;
-    newBestRef.current = previousBest === undefined || ms < previousBest;
-    setProgress((prev) => {
-      const next = recordClear(prev, difficulty, levelIndex, ms, game.hintsUsed);
-      saveProgress(next);
-      return next;
-    });
-    setDialog('win');
-    setHintCell(null);
-    // progress 刻意不放進依賴陣列：它在這個 effect 裡被更新，放進去會造成迴圈
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.finishedAt]);
-
-  // 骨頭用完就跳失敗結算
-  useEffect(() => {
-    if (!failed) return;
-    setHintCell(null);
-    setDialog('fail');
-  }, [failed]);
-
-  // 扣命時給一句說明。用 effect 觀察 lives 變化，而不是在 setGame 的
-  // updater 裡塞副作用 —— updater 必須保持純函式，StrictMode 會呼叫它兩次。
-  const previousLives = useRef(game.lives);
-  useEffect(() => {
-    if (game.lives < previousLives.current && game.lives > 0) {
-      setStatus(`放錯了，扣一根骨頭，還剩 ${game.lives} 根。那一格已標成紅叉，不用再試。`);
-    }
-    previousLives.current = game.lives;
-  }, [game.lives]);
-
-  const handleCellClick = useCallback((row: number, col: number) => {
-    setHintCell(null);
-    setGame((prev) => cycleCell(prev, row, col));
+  const goToLevel = useCallback((next: number) => {
+    setLevel(clampLevel(next));
+    setScreen('game');
   }, []);
 
-  // 拖曳標記時要能拿到「拖曳開始前」的盤面當復原點，而事件處理器裡讀不到
-  // 最新的 game（閉包會是上一次 render 的），所以用 ref 同步一份。
-  const gameRef = useRef(game);
-  useEffect(() => {
-    gameRef.current = game;
-  }, [game]);
+  if (screen === 'splash') {
+    return <Splash t={t} onDone={() => setScreen('home')} />;
+  }
 
-  const stroke = useRef<{ base: GameState; cells: Set<string> } | null>(null);
-
-  const handleStrokeStart = useCallback(() => {
-    setHintCell(null);
-    stroke.current = { base: gameRef.current, cells: new Set() };
-  }, []);
-
-  const handleStrokePaint = useCallback((row: number, col: number) => {
-    const current = stroke.current;
-    if (!current) return;
-    current.cells.add(key(row, col));
-    // 每次都從拖曳前的盤面重算，整段拖曳因此只產生一筆復原紀錄
-    setGame(applyMarkStroke(current.base, current.cells));
-  }, []);
-
-  const handleHint = useCallback(() => {
-    const hint = getHint(game);
-    if (!hint) {
-      setStatus('目前的盤面推不出下一步，先檢查有沒有放錯的柯基。');
-      return;
-    }
-    setHintCell({ row: hint.step.row, col: hint.step.col });
-    setStatus(hint.message);
-    setGame((prev) => markHintUsed(prev));
-  }, [game]);
-
-  const handleUndo = useCallback(() => {
-    setHintCell(null);
-    setGame((prev) => undoGame(prev));
-  }, []);
-
-  const handleRestart = useCallback(() => {
-    setHintCell(null);
-    setStatus('重新開始，盤面已還原。');
-    setGame((prev) => restartGame(prev));
-    setNow(Date.now());
-  }, []);
-
-  const handleReveal = useCallback(() => {
-    setHintCell(null);
-    if (game.revealed) {
-      // 收起答案 = 退回攤開之前那一步
-      setStatus('答案已收起，回到你剛才的盤面。');
-      setGame((prev) => undoGame(prev));
-      return;
-    }
-    setStatus('這是本關的正解。這一關不會記錄成績，按同一顆鈕可以收起來。');
-    setGame((prev) => revealSolution(prev));
-  }, [game.revealed]);
-
-  const hasNext = levelIndex + 1 < levels.length;
-
-  const liveStatus = finished
-    ? '完成！每一列、每一欄、每個區域都剛好一隻柯基。'
-    : failed
-      ? '骨頭用完了，這一關要重來。'
-      : conflicts.size > 0
-        ? `有 ${conflicts.size} 隻柯基違規了，看看標紅的位置。`
-        : status;
+  if (screen === 'game') {
+    return (
+      <Game
+        t={t}
+        level={level}
+        profile={profile}
+        settings={settings}
+        onSettingsChange={updateSettings}
+        onExit={() => setScreen('home')}
+        onCleared={handleCleared}
+        onGoToLevel={goToLevel}
+      />
+    );
+  }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <Corgi className="brand-corgi" />
-          <div>
-            <h1>Corgidoku</h1>
-            <p>柯基邏輯益智</p>
-          </div>
-        </div>
-
-        <div className="topbar-stats">
-          <div className="counter" aria-live="polite">
-            <Corgi className="counter-corgi" />
-            <span>
-              {placed}/{game.puzzle.size}
-            </span>
-          </div>
-
-          <div className="lives" aria-label={`剩餘 ${game.lives} 根骨頭`}>
-            {Array.from({ length: MAX_LIVES }, (_, i) => (
-              <Bone key={i} spent={i >= game.lives} className="life-bone" />
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <main className="stage">
-        <div className="stage-head">
-          <h2>
-            {DIFFICULTY_SPECS.find((d) => d.id === difficulty)?.name} 關卡 {levelIndex + 1}
-          </h2>
-          <div className="timer" aria-label="經過時間">
-            {formatTime(elapsedMs(game, now))}
-          </div>
-        </div>
-
-        <div className="difficulty" role="tablist" aria-label="難度">
-          {DIFFICULTY_SPECS.map((spec) => (
-            <button
-              key={spec.id}
-              type="button"
-              role="tab"
-              aria-selected={spec.id === difficulty}
-              className={spec.id === difficulty ? 'is-active' : ''}
-              onClick={() => loadLevel(spec.id, 0)}
-            >
-              {spec.name}
-            </button>
-          ))}
-        </div>
-
-        <Toolbar
-          onLevels={() => setDialog('levels')}
-          onHint={handleHint}
-          onUndo={handleUndo}
-          onRestart={handleRestart}
-          onReveal={handleReveal}
-          onRules={() => setDialog('rules')}
-          canUndo={game.history.length > 0}
-          revealed={game.revealed}
-        />
-
-        <div className={game.revealed ? 'board-frame is-revealed' : 'board-frame'}>
-          {game.revealed && <span className="reveal-badge">答案</span>}
-          <Board
-            state={game}
-            conflicts={conflicts}
-            hintCell={hintCell}
-            onCellClick={handleCellClick}
-            onStrokeStart={handleStrokeStart}
-            onStrokePaint={handleStrokePaint}
-            disabled={isLocked(game)}
-          />
-        </div>
-
-        <p className="status" role="status">
-          {liveStatus}
-        </p>
-      </main>
-
-      <LevelDialog
-        open={dialog === 'levels'}
-        onClose={() => setDialog(null)}
-        difficulty={difficulty}
-        current={levelIndex}
-        progress={progress}
-        onPick={loadLevel}
+    <>
+      <Home
+        t={t}
+        profile={profile}
+        onPlay={() => goToLevel(profile.currentLevel)}
+        onOpenProfile={() => setDialog('profile')}
+        onOpenSettings={() => setDialog('settings')}
       />
-      <RulesDialog open={dialog === 'rules'} onClose={() => setDialog(null)} />
-      <FailDialog
-        open={dialog === 'fail'}
-        onRetry={() => {
-          setDialog(null);
-          handleRestart();
-        }}
-        onReveal={() => {
-          setDialog(null);
-          // 先重開一局再攤答案：失敗狀態下盤面是鎖住的
-          setGame((prev) => revealSolution(restartGame(prev)));
-          setStatus('這是本關的正解。看完按「重新開始」可以再挑戰一次。');
-        }}
+
+      <SettingsDialog
+        open={dialog === 'settings'}
+        variant="home"
+        t={t}
+        settings={settings}
+        onChange={updateSettings}
+        onClose={() => setDialog(null)}
+        onOpenLanguage={() => setDialog('language')}
+      />
+
+      <ProfileDialog
+        open={dialog === 'profile'}
+        t={t}
+        profile={profile}
+        onConfirm={(patch) => updateProfile({ ...profile, ...patch })}
         onClose={() => setDialog(null)}
       />
-      <WinDialog
-        open={dialog === 'win'}
-        elapsedMs={game.finishedAt ? game.finishedAt - game.startedAt : 0}
-        hintsUsed={game.hintsUsed}
-        isNewBest={newBestRef.current}
-        hasNext={hasNext}
-        onNext={() => {
-          setDialog(null);
-          loadLevel(difficulty, levelIndex + 1);
-        }}
-        onReplay={() => {
-          setDialog(null);
-          handleRestart();
-        }}
-        onClose={() => setDialog(null)}
+
+      <LanguageDialog
+        open={dialog === 'language'}
+        t={t}
+        current={settings.locale}
+        onSelect={(locale) => updateSettings({ ...settings, locale })}
+        onClose={() => setDialog('settings')}
       />
-    </div>
+    </>
   );
 }

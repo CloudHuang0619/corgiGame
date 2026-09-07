@@ -14,7 +14,7 @@
  */
 
 import { countSolutions, analyse, findSolutions } from './solver.ts';
-import type { DifficultyId, DifficultySpec, Puzzle, RegionGrid } from './types.ts';
+import type { Puzzle, RegionGrid } from './types.ts';
 import { Technique } from './types.ts';
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
@@ -215,19 +215,42 @@ function repairToUnique(
 }
 
 // ---------------------------------------------------------------------------
-// 難度設定
+// 關卡曲線
 // ---------------------------------------------------------------------------
 
-export const DIFFICULTY_SPECS: readonly DifficultySpec[] = [
-  { id: 'easy', name: '一般', size: 6, technique: Technique.Basic, givenCount: 1 },
-  { id: 'hard', name: '困難', size: 8, technique: Technique.Intermediate, givenCount: 1 },
-  { id: 'expert', name: '超難', size: 9, technique: Technique.Advanced, givenCount: 0 },
-];
+/**
+ * 每一關的盤面大小與目標難度。
+ *
+ * 規格只驗證到兩個點：第 17 關是 9×9、第 18 關是 10×10。中間與前段是依
+ * 「逐步變大、逐步需要更深的推論」補的成長曲線，10×10 之後就不再變大 ——
+ * 再大在手機直向畫面上一格會小到點不準。
+ *
+ * 起手不送柯基。規格裡有明確證據：重新開始後是空盤面，玩家在上面放第一手
+ * 就被判失誤。所以開局盤面必須是全空的。
+ */
+export interface LevelSpec {
+  readonly level: number;
+  readonly size: number;
+  readonly technique: Technique;
+}
 
-export function getSpec(id: DifficultyId): DifficultySpec {
-  const spec = DIFFICULTY_SPECS.find((d) => d.id === id);
-  if (!spec) throw new Error(`未知的難度：${id}`);
-  return spec;
+function sizeForLevel(level: number): number {
+  if (level <= 3) return 5;
+  if (level <= 7) return 6;
+  if (level <= 11) return 7;
+  if (level <= 16) return 8;
+  if (level === 17) return 9; // 規格實測
+  return 10; // 規格實測第 18 關為 10×10，之後維持
+}
+
+function techniqueForLevel(level: number): Technique {
+  if (level <= 6) return Technique.Basic;
+  if (level <= 16) return Technique.Intermediate;
+  return Technique.Advanced;
+}
+
+export function getLevelSpec(level: number): LevelSpec {
+  return { level, size: sizeForLevel(level), technique: techniqueForLevel(level) };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,16 +264,13 @@ export interface GenerateOptions {
 }
 
 /**
- * 產生一張符合難度設定的盤面。
+ * 產生指定關卡的盤面。
  *
- * 同一個 seed 永遠產出同一張盤面，所以對戰時只要同步 seed 就能同步題目。
+ * 同一個 seed 永遠產出同一張盤面，所以關卡表可以只存 seed，也讓對戰時
+ * 雙方只要同步一個數字就能算出同一張題目。
  */
-export function generatePuzzle(
-  difficulty: DifficultyId,
-  seed: number,
-  options: GenerateOptions = {},
-): Puzzle | null {
-  const spec = getSpec(difficulty);
+export function generatePuzzle(level: number, seed: number, options: GenerateOptions = {}): Puzzle | null {
+  const spec = getLevelSpec(level);
   const { relaxTechnique = false, maxAttempts = 8000 } = options;
   const rng = createRng(seed);
   const n = spec.size;
@@ -268,105 +288,32 @@ export function generatePuzzle(
     const regions = repairToUnique([...grown], perm, rng);
     if (!regions) continue;
 
-    // 單格區域等於直接把答案送給玩家，濾掉
-    const counts = new Map<string, number>();
-    for (const row of regions) {
-      for (const ch of row) counts.set(ch, (counts.get(ch) ?? 0) + 1);
-    }
-    if (Math.min(...counts.values()) < 2) continue;
-
-    const given = chooseGivens(spec, regions, perm, rng);
-    if (!given) {
+    // 規格 §12.1 明確記錄「允許只有 1 格的區域」（第 18 關 F 區就是），
+    // 所以這裡不濾掉單格區域 —— 那反而是原版的特徵之一。
+    const analysis = analyse(regions);
+    if (analysis.technique !== spec.technique) {
       if (!fallback) fallback = { regions, perm };
       continue;
     }
-    return finalise(spec, seed, regions, perm, given);
+    return { level, size: n, regions, solution: [...perm] };
   }
 
   if (relaxTechnique && fallback) {
-    const given = fallback.perm
-      .map((col, row) => [row, col] as [number, number])
-      .slice(0, spec.givenCount);
-    return finalise(spec, seed, fallback.regions, fallback.perm, given);
+    return { level, size: n, regions: fallback.regions, solution: [...fallback.perm] };
   }
   return null;
-}
-
-/**
- * 挑選開局送的柯基，並確認「送了這些提示之後」的難度剛好等於目標。
- *
- * 難度必須連同起手提示一起評 —— 同一張盤面，提示放在不同列，可能是
- * 一路推到底的簡單題，也可能是得靠試誤的硬題。反過來說，這也是我們
- * 控制難度的旋鈕：不只挑盤面，也挑提示位置。
- *
- * 回傳 null 表示這張盤面配不出目標難度，外層應換一張。
- */
-function chooseGivens(
-  spec: DifficultySpec,
-  regions: RegionGrid,
-  perm: readonly number[],
-  rng: Rng,
-): [number, number][] | null {
-  if (spec.givenCount === 0) {
-    return analyse(regions).technique === spec.technique ? [] : null;
-  }
-
-  const rows: number[] = [];
-  for (let r = 0; r < spec.size; r += 1) rows.push(r);
-  for (let i = rows.length - 1; i > 0; i -= 1) {
-    const j = rng.int(i + 1);
-    [rows[i], rows[j]] = [rows[j]!, rows[i]!];
-  }
-
-  if (spec.givenCount === 1) {
-    for (const r of rows) {
-      const known = new Map([[r, perm[r]!]]);
-      if (analyse(regions, known).technique === spec.technique) {
-        return [[r, perm[r]!]];
-      }
-    }
-    return null;
-  }
-
-  // givenCount >= 2：只試洗牌後的前幾組，夠用且不會拖慢生成
-  for (let attempt = 0; attempt < spec.size * 2; attempt += 1) {
-    const picked = rows.slice(attempt, attempt + spec.givenCount);
-    if (picked.length < spec.givenCount) break;
-    const known = new Map(picked.map((r) => [r, perm[r]!] as const));
-    if (analyse(regions, known).technique === spec.technique) {
-      return picked.map((r) => [r, perm[r]!] as [number, number]).sort((a, b) => a[0] - b[0]);
-    }
-  }
-  return null;
-}
-
-function finalise(
-  spec: DifficultySpec,
-  seed: number,
-  regions: RegionGrid,
-  perm: readonly number[],
-  given: readonly [number, number][],
-): Puzzle {
-  return {
-    id: `gen-${spec.id}-${seed}`,
-    size: spec.size,
-    regions,
-    solution: [...perm],
-    given: [...given].sort((a, b) => a[0] - b[0]),
-    difficulty: spec.id,
-  };
 }
 
 /**
  * 一直換 seed 直到生出盤面為止。
  * 給「隨機來一局」用；固定關卡走 generatePuzzle 保留可重現性。
  */
-export function generateUntilSuccess(difficulty: DifficultyId, startSeed: number): Puzzle {
-  for (let i = 0; i < 200; i += 1) {
-    const puzzle = generatePuzzle(difficulty, startSeed + i * 7919, { maxAttempts: 3000 });
+export function generateUntilSuccess(level: number, startSeed: number): Puzzle {
+  for (let i = 0; i < 300; i += 1) {
+    const puzzle = generatePuzzle(level, startSeed + i * 7919, { maxAttempts: 3000 });
     if (puzzle) return puzzle;
   }
-  const relaxed = generatePuzzle(difficulty, startSeed, { relaxTechnique: true, maxAttempts: 20000 });
+  const relaxed = generatePuzzle(level, startSeed, { relaxTechnique: true, maxAttempts: 20000 });
   if (relaxed) return relaxed;
-  throw new Error(`無法產生 ${difficulty} 難度的盤面`);
+  throw new Error(`無法產生第 ${level} 關的盤面`);
 }

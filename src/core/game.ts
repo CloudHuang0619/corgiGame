@@ -2,181 +2,103 @@
  * 遊戲狀態機
  *
  * 純函式設計：每個操作都吃一個舊 state、吐一個新 state，不改動輸入。
- * 這讓「復原」只是保留舊 state 的引用，也讓之後對戰模式要把狀態
- * 序列化丟給伺服器變得很單純。
+ * 這讓「復原」只是保留舊 state 的引用，也讓進度持久化與之後的對戰同步
+ * 都只是序列化一個物件的事。
  */
 
-import type { CellState, Conflict, Coord, Puzzle } from './types.ts';
-import { CellState as CS, ConflictKind } from './types.ts';
+import type { CellState, Coord, Failure, Puzzle, RuleId } from './types.ts';
+import { CellState as CS, FailureKind, RuleId as R } from './types.ts';
 import { nextHint } from './solver.ts';
 import type { DeductionStep } from './solver.ts';
 
-/** 每關的命數。放錯一次扣一條，扣完就得重來。 */
+/** 每關的命數。放錯一次扣一根，扣完就得重來。 */
 export const MAX_LIVES = 3;
+
+/**
+ * 計分公式：第 k 隻柯基（k 由 1 起算）成功放下時得 576 + 96(k−1)。
+ *
+ * 兩個常數都是從實機錄影的分數變化逐格反推的，而且在 9×9 與 10×10 兩關
+ * 都相同，所以獎勵只跟「第幾隻」有關，跟盤面大小無關。
+ */
+export const SCORE_BASE = 576;
+export const SCORE_STEP = 96;
+
+export function awardFor(k: number): number {
+  return SCORE_BASE + SCORE_STEP * (k - 1);
+}
+
+/**
+ * 連擊稱號。綁定連續正確數，所以失誤會歸零重算。
+ * 前兩隻沒有稱號；k ≥ 9 原版未觀察到，沿用最後一級。
+ */
+export const STREAK_TITLES = ['Nice', 'Great', 'Perfect', 'Excellent', 'Amazing', 'Unbelievable'] as const;
+
+export function titleForStreak(streak: number): string | null {
+  if (streak < 3) return null;
+  return STREAK_TITLES[Math.min(streak - 3, STREAK_TITLES.length - 1)]!;
+}
 
 export interface GameState {
   readonly puzzle: Puzzle;
-  /** board[row][col] 的三態 */
   readonly board: readonly (readonly CellState[])[];
-  /** 開局送的柯基不可更動，這裡記下座標方便 UI 畫鎖定樣式 */
-  readonly locked: ReadonlySet<string>;
-  readonly moveCount: number;
-  readonly hintsUsed: number;
-  /** 復原堆疊；只存棋盤快照，體積很小 */
-  readonly history: readonly (readonly (readonly CellState[])[])[];
-  readonly startedAt: number;
-  readonly finishedAt: number | null;
-  /** 看過答案。看過就不記成績，但盤面還是可以繼續操作。 */
-  readonly revealed: boolean;
+  /** 已成功放下的柯基數。失誤不計入。 */
+  readonly catsPlaced: number;
+  readonly score: number;
   /**
    * 剩餘命數。刻意不進 history —— 復原可以收回棋步，但收不回失誤，
    * 否則「放錯就復原」等於沒有代價，這條規則也就沒有意義了。
    */
   readonly lives: number;
+  /** 連續正確數，驅動稱號。失誤歸零。 */
+  readonly streak: number;
+  readonly hintsUsed: number;
+  /** 復原堆疊。只有測試工具在用，正式流程沒有復原。 */
+  readonly history: readonly (readonly (readonly CellState[])[])[];
+  /** 開始時間。目前不顯示在 HUD，是為對戰模式預留的計時基準。 */
+  readonly startedAt: number;
+  readonly finishedAt: number | null;
+  /** 看過答案（測試工具）。看過就不記成績。 */
+  readonly revealed: boolean;
 }
 
 export const key = (row: number, col: number): string => `${row},${col}`;
 
 export function createGame(puzzle: Puzzle, now = Date.now()): GameState {
-  const board: CellState[][] = Array.from({ length: puzzle.size }, () =>
-    new Array<CellState>(puzzle.size).fill(CS.Empty),
-  );
-  const locked = new Set<string>();
-  for (const [r, c] of puzzle.given) {
-    board[r]![c] = CS.Corgi;
-    locked.add(key(r, c));
-  }
   return {
     puzzle,
-    board,
-    locked,
-    moveCount: 0,
+    // 開局是全空的盤面 —— 規格裡有「重新開始後在空盤面上放第一手就失誤」的直接證據
+    board: Array.from({ length: puzzle.size }, () => new Array<CellState>(puzzle.size).fill(CS.Empty)),
+    catsPlaced: 0,
+    score: 0,
+    lives: MAX_LIVES,
+    streak: 0,
     hintsUsed: 0,
     history: [],
     startedAt: now,
     finishedAt: null,
     revealed: false,
-    lives: MAX_LIVES,
   };
 }
 
-/** 命扣光了，這一關宣告失敗。 */
 export function isFailed(state: GameState): boolean {
   return state.lives <= 0;
 }
 
-/** 這一關是否還能操作 —— 已完成或已失敗就鎖住盤面。 */
+export function isCleared(state: GameState): boolean {
+  return state.finishedAt !== null;
+}
+
+/** 盤面是否還能操作。已通關或命已耗盡就鎖住。 */
 export function isLocked(state: GameState): boolean {
-  return state.finishedAt !== null || isFailed(state);
+  return isCleared(state) || isFailed(state);
 }
 
 function cloneBoard(board: readonly (readonly CellState[])[]): CellState[][] {
   return board.map((row) => [...row]);
 }
 
-/**
- * 點擊一格。
- *
- * 循環是 空白 → 叉號 →（嘗試放柯基）。第三步會分岔：位置在正解上就放下
- * 柯基，不在就留下紅色叉號並扣一條命。
- *
- * 兩種結果都是終點，再點也不會變 —— 放錯當場就被攔下並提示了，所以柯基
- * 出現就代表這格確定是對的，沒有理由收回；紅叉則是已經付出的代價，而且
- * 它本身也是有用的資訊：那就是「這裡不可能」的記號。
- */
-export function cycleCell(state: GameState, row: number, col: number, now = Date.now()): GameState {
-  if (isLocked(state)) return state;
-  if (state.locked.has(key(row, col))) return state;
-
-  const current = state.board[row]![col]!;
-  // 已定案的格子不再更動
-  if (current === CS.Corgi || current === CS.Wrong) return state;
-
-  const board = cloneBoard(state.board);
-  let lives = state.lives;
-
-  if (current === CS.Empty) {
-    board[row]![col] = CS.Marked;
-  } else {
-    const correct = state.puzzle.solution[row] === col;
-    board[row]![col] = correct ? CS.Corgi : CS.Wrong;
-    if (!correct) lives -= 1;
-  }
-
-  const next: GameState = {
-    ...state,
-    board,
-    lives,
-    moveCount: state.moveCount + 1,
-    history: [...state.history, state.board],
-  };
-
-  // 看過答案之後就算把盤面湊回正解，也不算通關
-  return isSolved(next) && !next.revealed ? { ...next, finishedAt: now } : next;
-}
-
-/**
- * 一次拖曳把經過的空白格全部標成叉號。
- *
- * 刻意從「拖曳開始前的狀態」重新套用整組座標，而不是逐格累加：
- * 這樣整段拖曳只留下一筆復原紀錄，撤銷時一次退回拖曳前，
- * 不必按十幾次。每次重算是 O(經過的格數)，成本可以忽略。
- *
- * 已經有叉號或柯基的格子一律跳過 —— 拖曳是用來快速排除，
- * 不該把玩家辛苦推出來的柯基掃掉。
- */
-export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): GameState {
-  if (isLocked(base)) return base;
-
-  const board = cloneBoard(base.board);
-  let changed = 0;
-
-  for (const cellKey of cells) {
-    if (base.locked.has(cellKey)) continue;
-    const [rowText, colText] = cellKey.split(',');
-    const row = Number(rowText);
-    const col = Number(colText);
-    if (board[row]?.[col] !== CS.Empty) continue;
-    board[row]![col] = CS.Marked;
-    changed += 1;
-  }
-
-  if (changed === 0) return base;
-
-  return {
-    ...base,
-    board,
-    moveCount: base.moveCount + changed,
-    history: [...base.history, base.board],
-  };
-}
-
-export function undo(state: GameState): GameState {
-  const previous = state.history[state.history.length - 1];
-  if (!previous) return state;
-
-  // 紅叉不隨復原消失。命已經扣了，若還能靠復原把痕跡抹掉，就會變成
-  // 「點錯 → 復原 → 當作沒事」，跟不能點掉紅叉的規則自相矛盾。
-  const board = previous.map((row, r) =>
-    row.map((cell, c) => (state.board[r]![c] === CS.Wrong ? CS.Wrong : cell)),
-  );
-
-  return {
-    ...state,
-    board,
-    history: state.history.slice(0, -1),
-    finishedAt: null,
-    // 從「看過答案」的盤面退回來，就不再算看過 —— 答案已經不在畫面上了
-    revealed: false,
-  };
-}
-
-export function restart(state: GameState, now = Date.now()): GameState {
-  return createGame(state.puzzle, now);
-}
-
 // ---------------------------------------------------------------------------
-// 規則檢查
+// 放置驗證：先查規則衝突，再比對解答
 // ---------------------------------------------------------------------------
 
 export function corgiPositions(state: GameState): Coord[] {
@@ -189,111 +111,244 @@ export function corgiPositions(state: GameState): Coord[] {
   return result;
 }
 
-/**
- * 找出目前盤面上所有違規。
- *
- * 刻意「回報所有違規」而不是碰到第一個就停 —— UI 要能同時把每一組
- * 衝突的柯基都標紅，玩家才看得出來到底哪裡撞在一起。
- */
-export function findConflicts(state: GameState): Conflict[] {
-  const corgis = corgiPositions(state);
-  const conflicts: Conflict[] = [];
-
-  const groupBy = (fn: (c: Coord) => string, kind: Conflict['kind']): void => {
-    const groups = new Map<string, Coord[]>();
-    for (const coord of corgis) {
-      const k = fn(coord);
-      let list = groups.get(k);
-      if (!list) {
-        list = [];
-        groups.set(k, list);
-      }
-      list.push(coord);
-    }
-    for (const cells of groups.values()) {
-      if (cells.length > 1) conflicts.push({ kind, cells });
-    }
-  };
-
-  groupBy((c) => `r${c.row}`, ConflictKind.Row);
-  groupBy((c) => `c${c.col}`, ConflictKind.Col);
-  groupBy((c) => state.puzzle.regions[c.row]![c.col]!, ConflictKind.Region);
-
-  for (let i = 0; i < corgis.length; i += 1) {
-    for (let j = i + 1; j < corgis.length; j += 1) {
-      const a = corgis[i]!;
-      const b = corgis[j]!;
-      if (Math.abs(a.row - b.row) <= 1 && Math.abs(a.col - b.col) <= 1) {
-        conflicts.push({ kind: ConflictKind.Adjacent, cells: [a, b] });
-      }
-    }
-  }
-
-  return conflicts;
+function rowCells(size: number, row: number): Coord[] {
+  return Array.from({ length: size }, (_, col) => ({ row, col }));
 }
 
-/** 目前處於違規狀態的格子集合，key 格式同 key()。 */
-export function conflictCells(state: GameState): Set<string> {
-  const cells = new Set<string>();
-  for (const conflict of findConflicts(state)) {
-    for (const c of conflict.cells) cells.add(key(c.row, c.col));
+function colCells(size: number, col: number): Coord[] {
+  return Array.from({ length: size }, (_, row) => ({ row, col }));
+}
+
+function regionCells(puzzle: Puzzle, letter: string): Coord[] {
+  const cells: Coord[] = [];
+  for (let r = 0; r < puzzle.size; r += 1) {
+    for (let c = 0; c < puzzle.size; c += 1) {
+      if (puzzle.regions[r]![c] === letter) cells.push({ row: r, col: c });
+    }
   }
   return cells;
 }
 
-export function isSolved(state: GameState): boolean {
-  const corgis = corgiPositions(state);
-  if (corgis.length !== state.puzzle.size) return false;
-  return findConflicts(state).length === 0;
+function blockCells(size: number, row: number, col: number): Coord[] {
+  const cells: Coord[] = [];
+  for (let r = row - 1; r <= row + 1; r += 1) {
+    for (let c = col - 1; c <= col + 1; c += 1) {
+      if (r >= 0 && r < size && c >= 0 && c < size) cells.push({ row: r, col: c });
+    }
+  }
+  return cells;
 }
-
-// ---------------------------------------------------------------------------
-// 提示
-// ---------------------------------------------------------------------------
-
-export interface Hint {
-  readonly step: DeductionStep;
-  /** 給玩家看的中文說明 */
-  readonly message: string;
-}
-
-const REASON_TEXT: Record<DeductionStep['reason'], string> = {
-  row: '這一列只剩這一格能放',
-  col: '這一欄只剩這一格能放',
-  region: '這個顏色區域只剩這一格能放',
-};
 
 /**
- * 給下一步提示。回傳位置與理由，但不動盤面 ——
- * 提示是指路，要不要放還是玩家決定。
+ * 檢查這一格會不會跟盤面上既有的柯基牴觸。
+ *
+ * 回傳的 conflictCells 是「要畫金色外框的範圍」而不只是撞到的那隻柯基：
+ * 撞列就框整列、撞欄就框整欄、撞區域就框整個區域、相鄰違規則框周圍 3×3。
+ * 這樣玩家一眼看得出是哪條規則擋住了。
  */
-export function getHint(state: GameState): Hint | null {
-  const placed = new Map<number, number>();
-  for (const { row, col } of corgiPositions(state)) {
-    // 同一列放了兩隻的話盤面本來就違規，交給衝突提示處理
-    if (!placed.has(row)) placed.set(row, col);
-  }
+export function findRuleConflict(state: GameState, row: number, col: number): Failure | null {
+  const { puzzle } = state;
+  const cats = corgiPositions(state);
+  const size = puzzle.size;
+  const letter = puzzle.regions[row]![col]!;
 
-  const step = nextHint(state.puzzle.regions, state.puzzle.solution, placed);
-  if (!step) return null;
+  const check: { rule: RuleId; hit: boolean; cells: () => Coord[] }[] = [
+    { rule: R.Row, hit: cats.some((c) => c.row === row), cells: () => rowCells(size, row) },
+    { rule: R.Col, hit: cats.some((c) => c.col === col), cells: () => colCells(size, col) },
+    {
+      rule: R.Region,
+      hit: cats.some((c) => puzzle.regions[c.row]![c.col] === letter),
+      cells: () => regionCells(puzzle, letter),
+    },
+    {
+      rule: R.Adjacent,
+      hit: cats.some((c) => Math.abs(c.row - row) <= 1 && Math.abs(c.col - col) <= 1),
+      cells: () => blockCells(size, row, col),
+    },
+  ];
+
+  // 同時違反多條時取第一條。原版在這種情況下的呈現未觀察到，
+  // 取固定順序至少是可預期的，不會每次不一樣。
+  const first = check.find((c) => c.hit);
+  if (!first) return null;
 
   return {
-    step,
-    message: `試試第 ${step.row + 1} 列、第 ${step.col + 1} 欄 —— ${REASON_TEXT[step.reason]}。`,
+    kind: FailureKind.RuleConflict,
+    cell: { row, col },
+    rule: first.rule,
+    conflictCells: first.cells(),
   };
 }
 
-/** 記一次提示使用；刻意不叫 useHint，免得被當成 React hook。 */
-export function markHintUsed(state: GameState): GameState {
-  return { ...state, hintsUsed: state.hintsUsed + 1 };
+export interface PlaceResult {
+  readonly state: GameState;
+  /** 成功時這一手的得分 */
+  readonly award: number | null;
+  /** 成功後的連擊稱號，未達門檻為 null */
+  readonly title: string | null;
+  /** 失敗時的型態與細節 */
+  readonly failure: Failure | null;
 }
 
 /**
- * 攤開答案。
+ * 嘗試在這一格放下柯基。
  *
- * 刻意不設 finishedAt —— 看答案不是通關，不該跳結算也不該記成績。
- * 盤面維持可操作，而且進了 history，按復原就能回到看之前的狀態。
+ * 雙層驗證，順序不能反：
+ *   1. 先看有沒有跟既有柯基牴觸 → 失誤型態 A，能明確指出違反哪一條規則
+ *   2. 再比對是不是正解的格子 → 失誤型態 B，沒有規則可指，只能說「不對」
+ *
+ * 第二層是這個遊戲跟一般 Queens 變體最大的差別：引擎手上有答案，會即時比對，
+ * 所以玩家不可能走到「合法但推不下去」的死路。也因此零失誤通關才有意義。
  */
+export function placeCorgi(state: GameState, row: number, col: number, now = Date.now()): PlaceResult {
+  const conflict = findRuleConflict(state, row, col);
+  if (conflict) return fail(state, conflict);
+
+  const correct = state.puzzle.solution[row] === col;
+  if (!correct) {
+    return fail(state, { kind: FailureKind.NotSolution, cell: { row, col } });
+  }
+
+  const board = cloneBoard(state.board);
+  board[row]![col] = CS.Corgi;
+  const catsPlaced = state.catsPlaced + 1;
+  const streak = state.streak + 1;
+  const award = awardFor(catsPlaced);
+  const solved = catsPlaced === state.puzzle.size;
+
+  return {
+    state: {
+      ...state,
+      board,
+      catsPlaced,
+      streak,
+      score: state.score + award,
+      history: [...state.history, state.board],
+      finishedAt: solved && !state.revealed ? now : state.finishedAt,
+    },
+    award,
+    title: titleForStreak(streak),
+    failure: null,
+  };
+}
+
+function fail(state: GameState, failure: Failure): PlaceResult {
+  const { row, col } = failure.cell;
+  const board = cloneBoard(state.board);
+  // 柯基不會留在盤面上，該格改留一個持久的紅叉
+  board[row]![col] = CS.Error;
+
+  return {
+    state: {
+      ...state,
+      board,
+      lives: state.lives - 1,
+      streak: 0,
+      history: [...state.history, state.board],
+    },
+    award: null,
+    title: null,
+    failure,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 格子操作
+// ---------------------------------------------------------------------------
+
+/** 已定案、任何操作都不能更動的格子。 */
+function isSettled(cell: CellState): boolean {
+  return cell === CS.Corgi || cell === CS.Error;
+}
+
+/**
+ * 點擊一格。
+ *
+ * 空白 → 叉號 →（嘗試放柯基）。玩家實際上是用「快速連點兩下」放柯基，
+ * 但那是兩次獨立的單擊各推進一次狀態，不是 double-tap 手勢 ——
+ * 實作上不能設判定時間窗，否則慢慢點兩下就放不出來。
+ */
+export function tapCell(state: GameState, row: number, col: number, now = Date.now()): PlaceResult {
+  const noop: PlaceResult = { state, award: null, title: null, failure: null };
+  if (isLocked(state)) return noop;
+
+  const current = state.board[row]![col]!;
+  if (isSettled(current)) return noop;
+
+  if (current === CS.Empty) {
+    const board = cloneBoard(state.board);
+    board[row]![col] = CS.Marked;
+    return {
+      state: { ...state, board, history: [...state.history, state.board] },
+      award: null,
+      title: null,
+      failure: null,
+    };
+  }
+
+  return placeCorgi(state, row, col, now);
+}
+
+/**
+ * 一次拖曳把經過的空白格全部標成叉號。
+ *
+ * 刻意從「拖曳開始前的狀態」重新套用整組座標，而不是逐格累加：
+ * 這樣整段拖曳只留下一筆復原紀錄。已經有記號的格子一律跳過，
+ * 拖曳只寫入、不擦除，也不會蓋掉已放好的柯基。
+ */
+export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): GameState {
+  if (isLocked(base)) return base;
+
+  const board = cloneBoard(base.board);
+  let changed = 0;
+
+  for (const cellKey of cells) {
+    const [rowText, colText] = cellKey.split(',');
+    const row = Number(rowText);
+    const col = Number(colText);
+    if (board[row]?.[col] !== CS.Empty) continue;
+    board[row]![col] = CS.Marked;
+    changed += 1;
+  }
+
+  if (changed === 0) return base;
+  return { ...base, board, history: [...base.history, base.board] };
+}
+
+export function restart(state: GameState, now = Date.now()): GameState {
+  return createGame(state.puzzle, now);
+}
+
+// ---------------------------------------------------------------------------
+// 測試工具（不屬於正式流程）
+// ---------------------------------------------------------------------------
+
+/**
+ * 復原上一步。正式版沒有這個功能，是測試用的。
+ *
+ * 紅叉不隨復原消失 —— 命已經扣了，若還能靠復原把痕跡抹掉，就會變成
+ * 「點錯 → 復原 → 當作沒事」，跟紅叉持久的規則自相矛盾。
+ */
+export function undo(state: GameState): GameState {
+  const previous = state.history[state.history.length - 1];
+  if (!previous) return state;
+
+  const board = previous.map((row, r) =>
+    row.map((cell, c) => (state.board[r]![c] === CS.Error ? CS.Error : cell)),
+  );
+  const catsPlaced = board.flat().filter((cell) => cell === CS.Corgi).length;
+
+  return {
+    ...state,
+    board,
+    catsPlaced,
+    history: state.history.slice(0, -1),
+    finishedAt: null,
+    revealed: false,
+  };
+}
+
+/** 攤開答案。看過就不算通關，也不記成績。 */
 export function revealSolution(state: GameState): GameState {
   const board: CellState[][] = Array.from({ length: state.puzzle.size }, () =>
     new Array<CellState>(state.puzzle.size).fill(CS.Empty),
@@ -305,9 +360,47 @@ export function revealSolution(state: GameState): GameState {
   return {
     ...state,
     board,
+    catsPlaced: state.puzzle.size,
     revealed: true,
     history: [...state.history, state.board],
   };
+}
+
+// ---------------------------------------------------------------------------
+// 提示
+// ---------------------------------------------------------------------------
+
+export interface Hint {
+  readonly step: DeductionStep;
+  readonly cell: Coord;
+  /** 推論依據的對象：區域字母，或列/欄的索引 */
+  readonly regionLetter: string | null;
+}
+
+/**
+ * 推出下一格可以確定的位置。
+ *
+ * 只回傳位置與理由，不動盤面 —— 原版的提示浮層也是先指出格子、
+ * 由玩家按「套用」才放下。
+ */
+export function getHint(state: GameState): Hint | null {
+  const placed = new Map<number, number>();
+  for (const { row, col } of corgiPositions(state)) {
+    if (!placed.has(row)) placed.set(row, col);
+  }
+
+  const step = nextHint(state.puzzle.regions, state.puzzle.solution, placed);
+  if (!step) return null;
+
+  return {
+    step,
+    cell: { row: step.row, col: step.col },
+    regionLetter: step.reason === 'region' ? state.puzzle.regions[step.row]![step.col]! : null,
+  };
+}
+
+export function markHintUsed(state: GameState): GameState {
+  return { ...state, hintsUsed: state.hintsUsed + 1 };
 }
 
 export function elapsedMs(state: GameState, now = Date.now()): number {

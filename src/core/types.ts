@@ -17,17 +17,17 @@ export type Solution = readonly number[];
 /**
  * 一格的狀態。
  *
- * 點擊循環是 empty → marked →（嘗試放柯基）→ empty。
- * 「嘗試放柯基」會分岔：位置正確就變成 corgi，錯了就變成 wrong
- * （紅色叉號）並扣一條命。因為每關保證唯一解，對錯是明確的。
+ * 點擊循環是 empty → marked →（嘗試放柯基）。第三步會分岔：位置正確就是
+ * corgi，錯了就是 error（紅色叉號）並扣一條命。因為每關保證唯一解，
+ * 對錯是明確的。
  */
 export const CellState = {
   Empty: 'empty',
-  /** 玩家標記「這裡不可能」的叉號 */
+  /** 玩家標記「這裡不可能」的白色叉號 */
   Marked: 'marked',
   Corgi: 'corgi',
-  /** 放錯而留下的紅色叉號，同時也是「這裡不可能」的記號 */
-  Wrong: 'wrong',
+  /** 放錯留下的紅色叉號，同時也是「這裡不可能」的記號 */
+  Error: 'error',
 } as const;
 
 export type CellState = (typeof CellState)[keyof typeof CellState];
@@ -49,40 +49,53 @@ export const Technique = {
 
 export type Technique = (typeof Technique)[keyof typeof Technique];
 
+/**
+ * 一個關卡。
+ *
+ * 關卡是線性編號的，而且同一個編號永遠對應同一張盤面 —— 這是規格明確
+ * 要求的（同關號在不同 session 解析出逐格相同的分區），所以關卡必須是
+ * 預先產生的固定資料，不能進遊戲時才隨機生成。
+ */
 export interface Puzzle {
-  /** 穩定識別碼，例如 "easy-1"。隨機生成的關卡用 "gen-<seed>"。 */
-  readonly id: string;
+  /** 關卡編號，從 1 起算 */
+  readonly level: number;
   readonly size: number;
   readonly regions: RegionGrid;
   readonly solution: Solution;
-  /** 開局就先擺好、不可更動的柯基 */
-  readonly given: readonly (readonly [number, number])[];
-  readonly difficulty: DifficultyId;
 }
 
-export type DifficultyId = 'easy' | 'hard' | 'expert';
-
-export interface DifficultySpec {
-  readonly id: DifficultyId;
-  readonly name: string;
-  readonly size: number;
-  /** 目標推論技巧等級 */
-  readonly technique: Technique;
-  /** 開局先送幾隻柯基 */
-  readonly givenCount: number;
-}
-
-/** 違規原因 —— UI 用來決定要把哪些格子標紅。 */
-export const ConflictKind = {
+/** 四條規則。違規時 UI 要知道是哪一條，才能高亮對應的規則卡。 */
+export const RuleId = {
   Row: 'row',
   Col: 'col',
   Region: 'region',
   Adjacent: 'adjacent',
 } as const;
 
-export type ConflictKind = (typeof ConflictKind)[keyof typeof ConflictKind];
+export type RuleId = (typeof RuleId)[keyof typeof RuleId];
 
-export interface Conflict {
-  readonly kind: ConflictKind;
-  readonly cells: readonly Coord[];
+/**
+ * 失誤的兩種型態。
+ *
+ * 這是規格裡最關鍵的一條推導：遊戲不只檢查規則衝突，還會即時比對唯一解。
+ * 證據是空盤面上放錯也會被拒絕扣命 —— 那時不可能有任何規則衝突。
+ *
+ * 兩種型態的回饋長度與元素不同，所以必須分開。
+ */
+export const FailureKind = {
+  /** 型態 A：與盤面上既有的柯基牴觸，有明確的規則可以指出來 */
+  RuleConflict: 'rule-conflict',
+  /** 型態 B：沒有牴觸任何規則，但這格不在正解上 */
+  NotSolution: 'not-solution',
+} as const;
+
+export type FailureKind = (typeof FailureKind)[keyof typeof FailureKind];
+
+export interface Failure {
+  readonly kind: FailureKind;
+  readonly cell: Coord;
+  /** 僅 RuleConflict 有值 —— UI 用它決定要高亮哪張規則卡 */
+  readonly rule?: RuleId;
+  /** 僅 RuleConflict 有值 —— UI 用它畫金色衝突外框 */
+  readonly conflictCells?: readonly Coord[];
 }

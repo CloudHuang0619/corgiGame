@@ -1,8 +1,12 @@
 /**
  * 盤面
  *
- * 區域不畫外框，純粹靠顏色分辨 —— 格子做成圓角磚塊、彼此留白，
- * 深色線條會把整個畫面切得很碎。九種色相彼此夠遠，不畫線也分得出來。
+ * 區域不畫外框，純粹靠顏色分辨 —— 格子做成圓角磚塊、彼此留白。
+ *
+ * 輸入用指標事件自己配對而不是 onClick：觸控裝置上「一次手勢 = 一次 click」
+ * 沒有保證，瀏覽器在 touchend 之後還會補送相容用的 mouse 事件，某些情況會
+ * 多產生一次 click，結果一次點擊推進兩個狀態。改成配對 pointerdown/pointerup
+ * 就沒有這個問題，而且順便支援拖曳標記。
  */
 
 import { memo, useRef } from 'react';
@@ -10,54 +14,42 @@ import { memo, useRef } from 'react';
 import type { GameState } from '../core/game.ts';
 import { key } from '../core/game.ts';
 import { CellState } from '../core/types.ts';
+import type { Coord } from '../core/types.ts';
 import { Corgi } from './Corgi.tsx';
-import { REGION_COLORS } from './palette.ts';
+import { REGION_COLORS } from './theme.ts';
 
 interface BoardProps {
   readonly state: GameState;
-  readonly conflicts: ReadonlySet<string>;
   /** 提示指出的格子，畫脈動光暈 */
-  readonly hintCell: { row: number; col: number } | null;
-  readonly onCellClick: (row: number, col: number) => void;
-  /** 開始一段拖曳標記，App 會在這時記下復原點 */
+  readonly hintCell: Coord | null;
+  /** 提示浮層開啟時，只有目標格維持全亮 */
+  readonly spotlight: boolean;
+  readonly onTap: (row: number, col: number) => void;
   readonly onStrokeStart: () => void;
-  /** 拖曳經過的格子，累積起來一起套用 */
   readonly onStrokePaint: (row: number, col: number) => void;
   readonly disabled?: boolean;
+  /** 關卡進場時的對角線階梯式淡入 */
+  readonly entering?: boolean;
 }
 
 export const Board = memo(function Board({
   state,
-  conflicts,
   hintCell,
-  onCellClick,
+  spotlight,
+  onTap,
   onStrokeStart,
   onStrokePaint,
   disabled = false,
+  entering = false,
 }: BoardProps) {
-  const { puzzle, board, locked } = state;
+  const { puzzle, board } = state;
   const size = puzzle.size;
 
-  /*
-   * 為什麼不用 onClick
-   * -----------------
-   * 觸控裝置上「一次手勢 = 一次 click」並沒有保證。瀏覽器在 touchend 之後
-   * 還會補送一組相容用的 mouse 事件，某些情況下會多產生一次 click，
-   * 結果一次點擊推進了兩個狀態（空白直接跳到柯基）。
-   *
-   * 改成自己配對 pointerdown / pointerup：
-   *   - 指標事件不論滑鼠或觸控都只會送一次，不會有相容事件的重複
-   *   - 記下按下時是哪一格，放開時必須是同一格才算數，手指滑開就取消
-   *   - 瀏覽器隨後補送的 click（detail >= 1）一律忽略
-   *   - detail === 0 的 click 來自鍵盤 Enter/Space，保留給無障礙操作
-   */
   const pressed = useRef<{
     pointerId: number;
     row: number;
     col: number;
-    /** 手指／滑鼠是否已經離開起始格 —— 離開了就是拖曳，不是單擊 */
     dragging: boolean;
-    /** 上一次塗到的格子，用來補上兩次事件之間被跨過的格子 */
     lastRow: number;
     lastCol: number;
   } | null>(null);
@@ -68,13 +60,11 @@ export const Board = memo(function Board({
   };
 
   /*
-   * 拖曳標記
-   * --------
    * 觸控時瀏覽器會把指標隱式綁定在按下的那一格，pointermove 永遠送到原本那格，
-   * e.target 沒有參考價值。所以改用 elementFromPoint 反查目前指標底下是哪一格，
+   * e.target 沒有參考價值。改用 elementFromPoint 反查指標底下是哪一格，
    * 滑鼠與觸控就能走同一套邏輯。
    */
-  const cellUnderPointer = (clientX: number, clientY: number): { row: number; col: number } | null => {
+  const cellUnderPointer = (clientX: number, clientY: number): Coord | null => {
     const element = document.elementFromPoint(clientX, clientY);
     const cell = element?.closest<HTMLElement>('[data-row]');
     if (!cell) return null;
@@ -90,16 +80,14 @@ export const Board = memo(function Board({
     if (!start.dragging && here.row === start.row && here.col === start.col) return;
 
     if (!start.dragging) {
-      // 剛離開起始格，這一刻才確定是拖曳。先記下復原點，起始格也要塗。
       start.dragging = true;
       onStrokeStart();
       onStrokePaint(start.row, start.col);
     }
 
     /*
-     * pointermove 是離散取樣的，手指劃快一點就會直接從第 1 格跳到第 3 格，
-     * 中間那格永遠收不到事件。所以沿著上一格到這一格的直線把中間補滿，
-     * 快速劃過才不會漏格。
+     * pointermove 是離散取樣的，手指劃快一點就會直接從第 1 格跳到第 3 格。
+     * 沿著上一格到這一格的直線把中間補滿，快速劃過才不會漏格。
      */
     const steps = Math.max(Math.abs(here.row - start.lastRow), Math.abs(here.col - start.lastCol));
     for (let i = 1; i <= steps; i += 1) {
@@ -115,51 +103,46 @@ export const Board = memo(function Board({
   const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>, row: number, col: number) => {
     const start = pressed.current;
     pressed.current = null;
-    if (!start) return;
-    if (start.pointerId !== e.pointerId) return;
-    // 拖曳過了就不再當成單擊，否則起始格會被多推進一個狀態
+    if (!start || start.pointerId !== e.pointerId) return;
     if (start.dragging) return;
     if (start.row !== row || start.col !== col) return;
 
-    // 觸控時瀏覽器會把指標隱式綁定在按下的那一格，就算手指移開了 pointerup
-    // 還是送到原本那格。所以要自己比對放開的座標是否仍在格子範圍內，
-    // 玩家才能用「按下去發現點錯、滑開再放」取消這一次操作。
+    // 觸控的隱式綁定會讓 pointerup 一律送到按下的那一格，所以要自己確認
+    // 放開時指標還在格子範圍內，玩家才能「按下發現點錯、滑開再放」取消。
     const box = e.currentTarget.getBoundingClientRect();
-    const inside =
-      e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
-    if (!inside) return;
+    if (
+      e.clientX < box.left ||
+      e.clientX > box.right ||
+      e.clientY < box.top ||
+      e.clientY > box.bottom
+    ) {
+      return;
+    }
 
-    onCellClick(row, col);
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>, row: number, col: number) => {
-    // detail 只有鍵盤觸發時是 0；滑鼠與觸控產生的 click 都已由 pointerup 處理完
-    if (e.detail !== 0) return;
-    onCellClick(row, col);
+    onTap(row, col);
   };
 
   return (
     <div
-      className="board"
+      className={['board', entering ? 'is-entering' : ''].filter(Boolean).join(' ')}
       style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
       role="grid"
-      aria-label={`${size} 乘 ${size} 的柯基盤面`}
+      aria-label={`${size} 乘 ${size} 的盤面`}
       onPointerMove={handlePointerMove}
     >
       {board.map((rowCells, row) =>
         rowCells.map((cell, col) => {
           const cellKey = key(row, col);
           const region = puzzle.regions[row]![col]!;
-          const isLocked = locked.has(cellKey);
-          const inConflict = conflicts.has(cellKey);
-          const isHint = hintCell?.row === row && hintCell?.col === col;
+          const isHint = hintCell?.row === row && hintCell.col === col;
+          const settled = cell === CellState.Corgi || cell === CellState.Error;
 
           const stateLabel =
             cell === CellState.Corgi
               ? '柯基'
               : cell === CellState.Marked
                 ? '叉號'
-                : cell === CellState.Wrong
+                : cell === CellState.Error
                   ? '放錯過的紅色叉號'
                   : '空白';
 
@@ -170,15 +153,17 @@ export const Board = memo(function Board({
               role="gridcell"
               className={[
                 'cell',
-                inConflict ? 'is-conflict' : '',
                 isHint ? 'is-hint' : '',
-                isLocked ? 'is-locked' : '',
-                // 柯基與紅叉都已定案，不該再給可點擊的回饋
-                cell === CellState.Wrong || cell === CellState.Corgi ? 'is-spent' : '',
+                settled ? 'is-settled' : '',
+                spotlight && !isHint ? 'is-dimmed' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={{ background: REGION_COLORS[region] ?? '#ddd' }}
+              style={{
+                background: REGION_COLORS[region] ?? '#ddd',
+                // 對角線階梯式淡入：同一條反對角線的格子一起進場
+                animationDelay: entering ? `${(row + col) * 28}ms` : undefined,
+              }}
               data-row={row}
               data-col={col}
               onPointerDown={(e) => handlePointerDown(e, row, col)}
@@ -186,23 +171,24 @@ export const Board = memo(function Board({
               onPointerCancel={() => {
                 pressed.current = null;
               }}
-              onClick={(e) => handleClick(e, row, col)}
-              disabled={disabled || isLocked}
+              onClick={(e) => {
+                // detail 只有鍵盤觸發時是 0；滑鼠與觸控的 click 已由 pointerup 處理
+                if (e.detail === 0) onTap(row, col);
+              }}
+              disabled={disabled}
               aria-label={`第 ${row + 1} 列、第 ${col + 1} 欄，${region} 區，${stateLabel}`}
             >
-              {cell === CellState.Corgi && (
-                <Corgi className="cell-corgi" variant={inConflict ? 'conflict' : 'normal'} animated />
-              )}
-              {(cell === CellState.Marked || cell === CellState.Wrong) && (
+              {cell === CellState.Corgi && <Corgi className="cell-corgi" animated />}
+              {(cell === CellState.Marked || cell === CellState.Error) && (
                 <svg
-                  className={cell === CellState.Wrong ? 'cell-mark is-wrong' : 'cell-mark'}
+                  className={cell === CellState.Error ? 'cell-mark is-error' : 'cell-mark'}
                   viewBox="0 0 24 24"
                   aria-hidden="true"
                 >
                   <path
                     d="M7 7 L17 17 M17 7 L7 17"
                     stroke="currentColor"
-                    strokeWidth="3.4"
+                    strokeWidth="3.6"
                     strokeLinecap="round"
                   />
                 </svg>

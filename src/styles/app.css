@@ -1,17 +1,27 @@
-/* Corgidoku —— 暖色系、圓潤、柯基毛色調 */
+/*
+ * Corgidoku
+ *
+ * 色票與造型語彙照規格 §15：暖米色底、大圓角、藥丸鈕、柔和淺陰影。
+ * 版面以直向手機為基準（原版錄影是 590×1280），桌面只是把同一個直向
+ * 版面置中，不另做寬版 —— 這個遊戲的操作本來就是單手直握。
+ */
 
 :root {
-  --cream: #fdf7f0;
-  --card: #ffffff;
-  --ink: #3d302c;
+  --bg: #f5f0ec;
+  --card: #fffffd;
+  --chip: #f9f2ea;
+  --ink: #312120;
   --ink-soft: #7a635c;
   --line: #e9dccf;
-  --accent: #dd9a55;
-  --accent-deep: #c07f3c;
-  --danger: #d9705b;
+  --accent: #e48722;
+  --accent-deep: #c06f16;
+  --danger: #d9534f;
+  --indigo: #5760a3;
+  --ok: #4caf50;
+
   --shadow-sm: 0 2px 6px rgba(87, 67, 58, 0.1);
-  --shadow-md: 0 8px 24px rgba(87, 67, 58, 0.12);
-  --radius: 16px;
+  --shadow-md: 0 8px 24px rgba(87, 67, 58, 0.14);
+  --radius: 18px;
 
   color-scheme: light;
   font-family: 'Nunito', 'PingFang TC', 'Microsoft JhengHei', system-ui, -apple-system, sans-serif;
@@ -22,17 +32,16 @@
 }
 
 /*
- * 觸控裝置的必要防護：
- *   touch-action  — 關掉雙擊縮放，否則連續點格子會被瀏覽器當成放大手勢
- *   user-select   — 快速連點時不會反白選到文字
- *   tap-highlight — 拿掉 iOS/Android 點擊時的半透明灰色方塊
+ * 觸控裝置的必要防護：關掉雙擊縮放、關掉連點反白、拿掉點擊的灰色方塊。
+ * .cell 另外用 touch-action: none，因為拖曳標記要吃掉手指移動，
+ * 否則劃過盤面會變成捲動頁面。
  */
 button,
 .cell {
-  touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 html,
@@ -42,7 +51,7 @@ body {
 }
 
 body {
-  background: var(--cream);
+  background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -57,159 +66,106 @@ button:disabled {
   cursor: default;
 }
 
-.app {
+#root {
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+}
+
+/* 所有畫面共用的直向容器 */
+.splash,
+.home,
+.game {
+  width: 100%;
+  max-width: 460px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  padding: calc(14px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
 }
 
-/* ------------------------------------------------------------------ 頂欄 */
+/* ------------------------------------------------------------------ 載入頁 */
 
-.topbar {
-  display: flex;
+.splash {
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  /* 瀏海機的狀態列會蓋住頂欄，用 safe-area 把內容推下來 */
-  padding: calc(12px + env(safe-area-inset-top)) 20px 12px;
-  background: var(--card);
-  border-bottom: 1px solid var(--line);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
+  justify-content: center;
   gap: 10px;
+  text-align: center;
+  cursor: pointer;
 }
 
-.brand-corgi {
-  width: 38px;
-  height: 38px;
-  flex: none;
+.splash-corgi {
+  width: 110px;
+  height: 110px;
 }
 
-.brand h1 {
+.splash-title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 2.1rem;
   font-weight: 900;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.04em;
 }
 
-.brand p {
+.splash-tagline {
   margin: 0;
-  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.splash-quote {
+  margin: 36px 12px 0;
   color: var(--ink-soft);
 }
 
-.counter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px 6px 8px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
+.splash-quote p {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+  line-height: 1.7;
 }
 
-.counter-corgi {
-  width: 26px;
-  height: 26px;
+.splash-quote cite {
+  font-size: 0.8rem;
+  font-style: normal;
+  opacity: 0.8;
 }
 
-.topbar-stats {
+/* ------------------------------------------------------------------ 首頁 */
+
+.home-top {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.lives {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 7px 10px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-}
-
-/* 用掉的骨頭不移除，只轉成灰色留在原位，才看得出本來有三根 */
-.life-bone {
-  width: 24px;
-  height: 13px;
-}
-
-/* ------------------------------------------------------------------ 主區 */
-
-.stage {
-  flex: 1;
-  width: 100%;
-  max-width: 620px;
-  margin: 0 auto;
-  padding: 20px 16px 40px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-}
-
-.stage-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.stage-head h2 {
-  margin: 0;
+.avatar-button {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
   font-size: 1.5rem;
-  font-weight: 900;
-}
-
-.timer {
-  font-variant-numeric: tabular-nums;
-  font-weight: 800;
-  color: var(--ink-soft);
-}
-
-/* 難度切換 */
-
-.difficulty {
-  display: inline-flex;
-  padding: 4px;
-  gap: 2px;
   background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  border: 3px solid var(--accent);
+  border-radius: 14px;
   box-shadow: var(--shadow-sm);
 }
 
-.difficulty button {
-  border: none;
-  background: transparent;
-  color: var(--ink-soft);
-  font-weight: 800;
-  font-size: 0.88rem;
-  padding: 7px 18px;
-  border-radius: 999px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.difficulty button.is-active {
-  background: var(--accent);
-  color: #fff;
-}
-
-/* 工具列 */
-
-.toolbar {
+.bone-total {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  padding: 8px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
-.tool {
-  width: 44px;
-  height: 44px;
+.icon-button {
+  width: 42px;
+  height: 42px;
+  flex: none;
   display: grid;
   place-items: center;
   background: var(--card);
@@ -217,69 +173,218 @@ button:disabled {
   border-radius: 50%;
   color: var(--ink-soft);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.15s, color 0.15s;
 }
 
-/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
-@media (hover: hover) {
-  .tool:hover:not(:disabled) {
-    transform: translateY(-2px);
-    color: var(--ink);
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.home-cards {
+  position: relative;
+  margin-top: 18px;
+}
+
+.daily-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 18px 20px;
+  background: var(--indigo);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  text-align: left;
+  box-shadow: var(--shadow-md);
+}
+
+.daily-lock {
+  font-size: 1.3rem;
+}
+
+.daily-title {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.daily-sub {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+.tip-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translate(-50%, 100%);
+  padding: 10px 16px;
+  background: rgba(49, 33, 32, 0.94);
+  color: #fff;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  z-index: 2;
+  animation: fade-in 0.2s;
+}
+
+.home-brand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.home-corgi {
+  width: 96px;
+  height: 96px;
+}
+
+.home-brand h1 {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.95;
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.btn-cta {
+  width: 100%;
+  padding: 18px;
+  font-size: 1.15rem;
+}
+
+/* ------------------------------------------------------------------ 遊戲 */
+
+.game {
+  gap: 12px;
+}
+
+.game-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-stats {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.stat-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-pills {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pill-corgi {
+  width: 24px;
+  height: 24px;
+}
+
+.progress-pill b {
+  color: var(--ok);
+}
+
+.life-bone {
+  width: 24px;
+  height: 13px;
+}
+
+/* 規則卡 */
+
+.rule-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.rule-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  background: var(--chip);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--ink-soft);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.chip-mini {
+  width: 34px;
+  height: 34px;
+}
+
+/* 違規時對應的卡高亮，玩家才知道是哪一條擋住了 */
+.rule-chip.is-violated {
+  background: #fbe3ec;
+  border-color: #e58bad;
+  color: #b03a63;
+}
+
+.rule-chips.is-pulsing .rule-chip {
+  animation: chip-pulse 0.9s ease-out 0.5s;
+}
+
+@keyframes chip-pulse {
+  30%,
+  60% {
+    border-color: var(--accent);
   }
 }
 
-.tool:disabled {
-  opacity: 0.4;
-}
-
-.tool svg {
-  width: 21px;
-  height: 21px;
-  fill: currentColor;
-}
-
-.tool svg[stroke] {
-  fill: none;
-}
-
-/* ------------------------------------------------------------------ 盤面 */
+/* 盤面 */
 
 .board-frame {
   position: relative;
-  width: 100%;
-  padding: 14px;
+  padding: 8px;
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
 }
 
-/* 攤開答案時整塊盤面換個底色，避免看完忘記自己在看答案 */
-.board-frame.is-revealed {
-  background: #fdf0e2;
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow-md);
-}
-
-.reveal-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 3px 14px;
-  background: var(--accent);
-  color: #fff;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  z-index: 1;
-}
-
 .board {
   display: grid;
-  /*
-   * 格子之間留白就是分界，不再畫線。
-   * gap 用百分比（對盤面寬度計算），6x6 到 9x9 的疏密比例才會一致。
-   */
   gap: 1.4%;
   width: 100%;
   aspect-ratio: 1;
@@ -287,81 +392,699 @@ button:disabled {
 
 .cell {
   position: relative;
-  /*
-   * none 而不是 manipulation：拖曳標記需要吃掉手指的移動，
-   * 否則在手機上劃過格子會變成捲動整個頁面，一格都畫不到。
-   */
   touch-action: none;
   aspect-ratio: 1;
   min-width: 0;
   border: none;
-  /* 百分比圓角是對格子自身的尺寸算的，所以大小盤面的圓潤程度自動一致 */
-  border-radius: 16%;
-  /* 柯基從格子下方彈進來，超出的部分要裁掉才像「從下面冒出來」 */
+  /* 百分比圓角是對格子自身算的，所以 5×5 到 10×10 的圓潤程度自動一致 */
+  border-radius: 18%;
   overflow: hidden;
   padding: 0;
   display: grid;
-  place-items: center;
+  place-items: end center;
   color: var(--ink);
-  transition: filter 0.12s;
+  transition: filter 0.15s, opacity 0.2s;
 }
 
 /* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
 @media (hover: hover) {
-  .cell:hover:not(:disabled) {
+  .cell:hover:not(:disabled):not(.is-settled) {
     filter: brightness(1.06);
   }
 }
 
-.cell:active:not(:disabled) {
+.cell:active:not(:disabled):not(.is-settled) {
   filter: brightness(0.94);
 }
 
-/*
- * 放錯留下的紅叉不能再更動，所以拿掉可點擊的回饋。
- * 這裡刻意不加任何濾鏡 —— 去飽和會把紅叉一起洗成灰色，
- * 那正是最需要醒目的東西。
- */
-.cell.is-spent {
+/* 柯基與紅叉都已定案，不再給可點擊的回饋 */
+.cell.is-settled {
   cursor: default;
 }
 
-.cell.is-spent:hover,
-.cell.is-spent:active {
-  filter: none;
+/* 提示浮層開啟時，只有目標格維持全亮 */
+.cell.is-dimmed {
+  opacity: 0.42;
 }
 
+.cell.is-hint {
+  z-index: 1;
+  box-shadow: 0 0 0 3px var(--accent), 0 0 18px rgba(228, 135, 34, 0.6);
+  animation: hint-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hint-pulse {
+  50% {
+    box-shadow: 0 0 0 3px var(--accent), 0 0 6px rgba(228, 135, 34, 0.3);
+  }
+}
+
+.board.is-entering .cell {
+  animation: cell-in 0.4s backwards;
+}
+
+@keyframes cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+}
+
+.cell-mark {
+  width: 44%;
+  height: 44%;
+  align-self: center;
+  color: #fff;
+  opacity: 0.9;
+  pointer-events: none;
+  animation: mark-in 0.12s ease-out;
+}
+
+/* 放錯留下的紅叉：畫粗、畫滿，要和自己標的白叉一眼分得出來 */
+.cell-mark.is-error {
+  width: 58%;
+  height: 58%;
+  color: var(--danger);
+  opacity: 1;
+}
+
+@keyframes mark-in {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+}
+
+/* 得分浮字 */
+
+.score-float {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 3;
+  animation: float-up 0.9s ease-out forwards;
+}
+
+.float-award {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--accent-deep);
+  text-shadow: 0 2px 0 #fff;
+}
+
+.float-title {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: var(--ok);
+}
+
+@keyframes float-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -26px);
+  }
+}
+
+/* 提示 */
+
+.hint-button {
+  align-self: center;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--accent-deep);
+  box-shadow: var(--shadow-md);
+}
+
+.hint-button svg {
+  width: 26px;
+  height: 26px;
+}
+
+.hint-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px 20px calc(40px + env(safe-area-inset-bottom));
+  background: rgba(20, 12, 10, 0.55);
+  pointer-events: none;
+}
+
+.hint-text {
+  margin: 0;
+  padding: 16px 20px;
+  background: var(--card);
+  border-radius: 14px;
+  font-weight: 800;
+  color: #a34a6d;
+  box-shadow: var(--shadow-md);
+}
+
+.hint-overlay .btn {
+  pointer-events: auto;
+  min-width: 200px;
+}
+
+/* ------------------------------------------------------------------ 按鈕 */
+
+.btn {
+  padding: 13px 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  font-weight: 900;
+  transition: transform 0.15s;
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: var(--card);
+}
+
+.btn-block {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+}
+
+/* ------------------------------------------------------------------ 對話框 */
+
+.dialog {
+  width: min(430px, calc(100vw - 28px));
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-md);
+}
+
+.dialog::backdrop {
+  background: rgba(49, 33, 32, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.dialog-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.dialog-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--ink-soft);
+}
+
+.dialog-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dialog-body {
+  padding: 18px;
+  max-height: min(70dvh, 620px);
+  overflow-y: auto;
+}
+
+.toast {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: -6px 0 12px;
+  padding: 9px 16px;
+  background: rgba(49, 33, 32, 0.94);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  text-align: center;
+  animation: fade-in 0.2s;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 設定 */
+
+.switch-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.switch-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 4px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink-soft);
+}
+
+.switch-cell svg {
+  width: 22px;
+  height: 22px;
+}
+
+.switch-label {
+  font-size: 0.68rem;
+}
+
+.switch-pill {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #c9bfb4;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 900;
+}
+
+.switch-cell.is-on .switch-pill,
+.setting-row.is-on .switch-pill {
+  background: var(--ok);
+}
+
+.setting-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 14px 16px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.setting-value {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.setting-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.setting-actions .btn {
+  flex: 1;
+}
+
+.settings-foot {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.settings-foot a {
+  color: var(--ink-soft);
+  margin: 0 8px;
+}
+
+.settings-foot p {
+  margin: 10px 0 0;
+  opacity: 0.7;
+}
+
+/* 測試工具 */
+
+.dev-tools {
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: #fbf7f1;
+}
+
+.dev-tools h3 {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: var(--ink-soft);
+}
+
+.dev-note {
+  margin: 0 0 10px;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  opacity: 0.8;
+}
+
+.dev-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dev-row .btn {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+/* 個人資料 */
+
+.profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  background: var(--chip);
+  border: 3px solid var(--accent);
+  border-radius: 16px;
+}
+
+.nickname-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tabs button {
+  flex: 1;
+  padding: 10px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.tabs button.is-active {
+  background: #4a3730;
+  border-color: #4a3730;
+  color: #fff;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.picker-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.picker-glyph {
+  font-size: 1.7rem;
+}
+
+.picker-frame {
+  width: 60%;
+  height: 60%;
+  border: 4px solid;
+  border-radius: 10px;
+}
+
+.picker-cell.is-selected::after {
+  content: '✓';
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--ok);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+/* 語言 */
+
+.language-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.language-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 16px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: #9d5674;
+  text-align: left;
+}
+
+.language-native {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.language-label {
+  font-size: 0.74rem;
+  opacity: 0.75;
+}
+
+.language-row.is-selected {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
+.language-check {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+}
+
+/* 結算與失敗 */
+
+.clear,
+.fail {
+  text-align: center;
+}
+
+.clear-corgis,
+.fail-bones {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.clear-corgis svg {
+  width: 56px;
+  height: 56px;
+  animation: bob 1.1s ease-in-out infinite;
+}
+
+.clear-corgis svg:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.clear-corgis svg:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.fail-bones svg {
+  width: 46px;
+  height: 25px;
+}
+
+.clear-score {
+  margin: 12px 0 2px;
+  font-size: 2.2rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.clear-sub,
+.fail-tip {
+  margin: 0 0 16px;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.fail-lead {
+  margin: 14px 0 8px;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.clear-bones {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+/* 選關卡（測試工具） */
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 8px;
+}
+
+.level-chip {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.level-chip-number {
+  font-weight: 900;
+}
+
+.level-chip-meta {
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+}
+
+.level-chip.is-cleared {
+  background: #f4ede2;
+  border-color: var(--accent);
+}
+
+.level-chip.is-current {
+  border-color: var(--accent-deep);
+  border-width: 2px;
+}
+
+.status {
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+/* ------------------------------------------------------------------ 柯基 */
+
 /*
- * 柯基
- * ----
  * 正式素材是 sprite sheet，逐格播放由 CorgiSprite 掛上 steps() 動畫。
- * 三段用三個不同名字的 keyframes，內容一樣 —— START 與 IDLE 都是 24 格、
- * 同樣長度，共用同一個名字的話切換時瀏覽器會認為動畫沒變而不重播。
- *
- * 沒有素材時退回手繪 SVG，動畫改由下面的 corgi-start / corgi-cycle 負責。
+ * 三段共用同一組 keyframes，重播靠換 key 重新掛載。
+ * 多排的 sheet 由 sprite-x 橫向走完一排、sprite-y 再往下換排。
  */
 .cell-corgi {
   width: 100%;
   height: 100%;
-  align-self: end;
   pointer-events: none;
 }
 
 .corgi-sprite {
   background-repeat: no-repeat;
   background-position: 0% 0%;
-  /* 縮放時保留清晰邊緣，像素風或線稿都不會糊 */
-  image-rendering: auto;
 }
 
-.corgi-sprite.is-still {
-  background-position: 0% 0%;
-}
-
-/*
- * 逐格捲動。三段共用同一組 keyframes，重播靠 CorgiSprite 換 key 重新掛載。
- * 多排的 sheet 由 sprite-x 橫向走完一排、sprite-y 再往下換排。
- */
 @keyframes sprite-x {
   from {
     background-position-x: 0%;
@@ -380,18 +1103,10 @@ button:disabled {
   }
 }
 
-/*
- * 以下是手繪備援版的動畫，三段的節奏與 sprite 一致：
- *   START  從格子下方彈上來，順勢吐一下舌頭
- *   IDLE   待機 1 秒，只有很輕的呼吸
- *   LOOP   往上嗅兩下、往左嗅兩下再回正
- * IDLE 與 LOOP 合成同一段循環，用 animation-delay 接在 START 後面。
- * 選擇器限定 svg.cell-corgi，才不會誤套到 sprite 的 <div> 上。
- */
+/* 手繪備援版的動畫，節奏與 sprite 一致 */
 svg.cell-corgi {
-  /* 手繪版的圖形沒有留白，要縮小一點才不會頂到格子邊 */
-  width: 88%;
-  height: 88%;
+  width: 92%;
+  height: 92%;
 }
 
 svg.cell-corgi .corgi-root {
@@ -402,7 +1117,6 @@ svg.cell-corgi .corgi-root {
 
 svg.cell-corgi .corgi-head {
   transform-box: fill-box;
-  /* 以脖子為軸心轉頭，繞中心轉會像頭掉下來 */
   transform-origin: 50% 92%;
   animation: corgi-cycle 3s 620ms ease-in-out infinite both;
 }
@@ -413,7 +1127,6 @@ svg.cell-corgi .corgi-tongue {
   animation: corgi-lick 900ms ease-out both;
 }
 
-/* 靜態場合（頂欄、結算）不需要舌頭露在外面 */
 .corgi-tongue {
   transform: scaleY(0);
   transform-origin: 50% 0%;
@@ -440,9 +1153,7 @@ svg.cell-corgi .corgi-tongue {
   46% {
     transform: scaleY(0);
   }
-  62% {
-    transform: scaleY(1);
-  }
+  62%,
   84% {
     transform: scaleY(1);
   }
@@ -453,60 +1164,32 @@ svg.cell-corgi .corgi-tongue {
 
 @keyframes corgi-cycle {
   0%,
-  26% {
+  26%,
+  33% {
     transform: rotate(0deg) translateY(0) scale(1);
   }
   14% {
     transform: rotate(0deg) translateY(-1%) scale(1.015);
   }
-  33% {
-    transform: rotate(0deg) translateY(0) scale(1);
-  }
-  41% {
+  41%,
+  55% {
     transform: rotate(0deg) translateY(-7%) scale(1);
   }
   48% {
     transform: rotate(0deg) translateY(-2%) scale(1);
   }
-  55% {
-    transform: rotate(0deg) translateY(-7%) scale(1);
-  }
   64% {
     transform: rotate(0deg) translateY(0) scale(1);
   }
-  73% {
+  73%,
+  87% {
     transform: rotate(-11deg) translateY(-2%) scale(1);
   }
   80% {
     transform: rotate(-6deg) translateY(-2%) scale(1);
   }
-  87% {
-    transform: rotate(-11deg) translateY(-2%) scale(1);
-  }
   100% {
     transform: rotate(0deg) translateY(0) scale(1);
-  }
-}
-
-@keyframes pop {
-  from {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-}
-
-@keyframes shake {
-  25% {
-    transform: translateX(-3px);
-  }
-  75% {
-    transform: translateX(3px);
-  }
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
   }
 }
 
@@ -515,357 +1198,28 @@ svg.cell-corgi .corgi-tongue {
   svg.cell-corgi .corgi-root,
   svg.cell-corgi .corgi-head,
   svg.cell-corgi .corgi-tongue,
-  .cell.is-conflict,
-  .cell.is-hint::before {
+  .board.is-entering .cell,
+  .clear-corgis svg,
+  .cell.is-hint,
+  .score-float {
     animation: none;
   }
-}
-
-.status {
-  margin: 0;
-  min-height: 1.4em;
-  text-align: center;
-  color: var(--ink-soft);
-  font-size: 0.9rem;
-}
-
-/* ------------------------------------------------------------------ 對話框 */
-
-.dialog {
-  width: min(520px, calc(100vw - 32px));
-  padding: 0;
-  border: none;
-  border-radius: var(--radius);
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: var(--shadow-md);
-}
-
-.dialog::backdrop {
-  background: rgba(61, 48, 44, 0.42);
-  backdrop-filter: blur(2px);
-}
-
-.dialog-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.dialog-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 900;
-}
-
-.dialog-close {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: none;
-  background: transparent;
-  border-radius: 50%;
-  color: var(--ink-soft);
-}
-
-/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
-@media (hover: hover) {
-  .dialog-close:hover {
-    background: var(--cream);
-  }
-}
-
-.dialog-close svg {
-  width: 18px;
-  height: 18px;
-}
-
-.dialog-body {
-  padding: 18px;
-  max-height: min(66dvh, 560px);
-  overflow-y: auto;
-}
-
-/* 規則 */
-
-.rules {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.rules li {
-  display: flex;
-  gap: 12px;
-}
-
-.rules-number {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: #fff;
-  border-radius: 50%;
-  font-weight: 900;
-  font-size: 0.82rem;
-}
-
-.rules h3 {
-  margin: 0 0 3px;
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
-.rules p {
-  margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--ink-soft);
-}
-
-.rules-foot {
-  margin: 18px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-  font-size: 0.84rem;
-  line-height: 1.6;
-  color: var(--ink-soft);
-}
-
-/* 關卡選擇 */
-
-.level-group + .level-group {
-  margin-top: 20px;
-}
-
-.level-group h3 {
-  margin: 0 0 10px;
-  font-size: 0.92rem;
-  font-weight: 900;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.level-group-meta {
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: var(--ink-soft);
-}
-
-.level-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-  gap: 8px;
-}
-
-.level-chip {
-  aspect-ratio: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  transition: transform 0.15s, border-color 0.15s;
-}
-
-/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
-@media (hover: hover) {
-  .level-chip:hover {
-    transform: translateY(-2px);
-  }
-}
-
-.level-chip-number {
-  font-weight: 900;
-  font-size: 1rem;
-}
-
-.level-chip-time {
-  font-size: 0.66rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-soft);
-}
-
-.level-chip.is-cleared {
-  background: #f4ede2;
-  border-color: var(--accent);
-}
-
-.level-chip.is-current {
-  border-color: var(--accent-deep);
-  border-width: 2px;
-}
-
-/* 失敗結算 */
-
-.fail {
-  text-align: center;
-}
-
-.fail-bones {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.fail-bones svg {
-  width: 46px;
-  height: 25px;
-}
-
-.fail-lead {
-  margin: 0 0 8px;
-  font-size: 1.1rem;
-  font-weight: 900;
-}
-
-.fail-tip {
-  margin: 0 0 20px;
-  font-size: 0.86rem;
-  line-height: 1.6;
-  color: var(--ink-soft);
-}
-
-.fail-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-/* 通關結算 */
-
-.win {
-  text-align: center;
-}
-
-.win-corgis {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-}
-
-.win-corgis svg {
-  width: 54px;
-  height: 54px;
-  animation: bob 1.1s ease-in-out infinite;
-}
-
-.win-corgis svg:nth-child(2) {
-  animation-delay: 0.12s;
-}
-
-.win-corgis svg:nth-child(3) {
-  animation-delay: 0.24s;
-}
-
-@keyframes bob {
-  50% {
-    transform: translateY(-7px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .win-corgis svg {
-    animation: none;
-  }
-}
-
-.win-time {
-  margin: 10px 0 2px;
-  font-size: 2rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.win-best {
-  margin-left: 8px;
-  padding: 3px 10px;
-  vertical-align: middle;
-  background: var(--accent);
-  color: #fff;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 900;
-}
-
-.win-meta {
-  margin: 0 0 20px;
-  font-size: 0.86rem;
-  color: var(--ink-soft);
-}
-
-.win-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.btn {
-  padding: 11px 24px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  font-weight: 800;
-  transition: transform 0.15s;
-}
-
-/* 觸控裝置沒有真正的 hover，點完狀態會黏住，所以只在有滑鼠時套用 */
-@media (hover: hover) {
-  .btn:hover {
-    transform: translateY(-2px);
-  }
-}
-
-.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.btn-ghost {
-  background: var(--card);
-  color: var(--ink-soft);
 }
 
 /* ------------------------------------------------------------------ 窄螢幕 */
 
-@media (max-width: 480px) {
-  .topbar {
-    padding: 10px 14px;
+@media (max-width: 380px) {
+  .rule-chip {
+    font-size: 0.64rem;
+    padding: 8px 4px;
   }
 
-  .stage {
-    padding: 14px 12px calc(32px + env(safe-area-inset-bottom));
-    gap: 12px;
+  .chip-mini {
+    width: 28px;
+    height: 28px;
   }
 
-  /* 手機直式時工具列容易擠，縮一點但維持 44px 的可點面積下限 */
-  .toolbar {
-    gap: 8px;
-  }
-
-  .tool {
-    width: 44px;
-    height: 44px;
-  }
-
-  .stage-head h2 {
-    font-size: 1.25rem;
-  }
-
-  .board-frame {
-    padding: 10px;
+  .game-stats {
+    gap: 20px;
   }
 }
