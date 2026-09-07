@@ -25,7 +25,8 @@ interface BoardProps {
   /** 提示浮層開啟時，只有目標格維持全亮 */
   readonly spotlight: boolean;
   readonly onTap: (row: number, col: number) => void;
-  readonly onStrokeStart: () => void;
+  /** 拖曳開始，帶起始格 —— 塗或擦由那一格的狀態決定 */
+  readonly onStrokeStart: (row: number, col: number) => void;
   readonly onStrokePaint: (row: number, col: number) => void;
   readonly disabled?: boolean;
   /** 關卡進場時的對角線階梯式淡入 */
@@ -81,7 +82,7 @@ export const Board = memo(function Board({
 
     if (!start.dragging) {
       start.dragging = true;
-      onStrokeStart();
+      onStrokeStart(start.row, start.col);
       onStrokePaint(start.row, start.col);
     }
 

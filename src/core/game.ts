@@ -262,42 +262,87 @@ function isSettled(cell: CellState): boolean {
 }
 
 /**
+ * 一次點擊要做什麼。
+ *
+ *   toggle 空白 ↔ 叉號來回切換
+ *   place  嘗試放柯基
+ *
+ * 由 UI 依「是不是快速連點同一格」決定，核心只管執行 ——
+ * 時間窗屬於輸入判讀，不該混進遊戲規則裡。
+ */
+export type TapIntent = 'toggle' | 'place';
+
+/**
  * 點擊一格。
  *
- * 空白 → 叉號 →（嘗試放柯基）。玩家實際上是用「快速連點兩下」放柯基，
- * 但那是兩次獨立的單擊各推進一次狀態，不是 double-tap 手勢 ——
- * 實作上不能設判定時間窗，否則慢慢點兩下就放不出來。
+ * 叉號是玩家的推理筆記，必須零成本、可反覆 —— 標錯了要能隨手清掉，
+ * 而不是只剩「賭一條命放柯基」這一條出路。所以單擊只在空白與叉號之間
+ * 來回切換，放柯基另外用快速連點兩下觸發。
  */
-export function tapCell(state: GameState, row: number, col: number, now = Date.now()): PlaceResult {
+export function tapCell(
+  state: GameState,
+  row: number,
+  col: number,
+  intent: TapIntent = 'toggle',
+  now = Date.now(),
+): PlaceResult {
   const noop: PlaceResult = { state, award: null, title: null, failure: null };
   if (isLocked(state)) return noop;
 
   const current = state.board[row]![col]!;
   if (isSettled(current)) return noop;
 
-  if (current === CS.Empty) {
-    const board = cloneBoard(state.board);
-    board[row]![col] = CS.Marked;
-    return {
-      state: { ...state, board, history: [...state.history, state.board] },
-      award: null,
-      title: null,
-      failure: null,
-    };
-  }
+  if (intent === 'place') return placeCorgi(state, row, col, now);
 
-  return placeCorgi(state, row, col, now);
+  const board = cloneBoard(state.board);
+  board[row]![col] = current === CS.Empty ? CS.Marked : CS.Empty;
+  return {
+    state: { ...state, board, history: [...state.history, state.board] },
+    award: null,
+    title: null,
+    failure: null,
+  };
 }
 
 /**
- * 一次拖曳把經過的空白格全部標成叉號。
+ * 判定成「快速連點」的時間上限。
+ *
+ * 實機錄影量到的兩次點擊間隔是 100–166 毫秒，取 350 毫秒留了兩倍餘裕，
+ * 手比較慢的人也放得出柯基；而刻意要取消叉號的那一下通常隔得遠得多，
+ * 不會誤觸。
+ */
+export const DOUBLE_TAP_MS = 350;
+
+/**
+ * 拖曳的模式。由起點那一格的狀態決定：
+ *   從空白格開始 → 塗上叉號
+ *   從叉號開始   → 擦掉叉號
+ *
+ * 這是「能劃出來就該能劃掉」的直覺。用起點決定而不是中途切換，是因為
+ * 一次拖曳如果又塗又擦，手指劃過去的結果會變得無法預期。
+ */
+export type StrokeMode = 'mark' | 'erase';
+
+export function strokeModeFor(state: GameState, row: number, col: number): StrokeMode {
+  return state.board[row]![col] === CS.Marked ? 'erase' : 'mark';
+}
+
+/**
+ * 一次拖曳把經過的格子整批塗上或擦掉叉號。
  *
  * 刻意從「拖曳開始前的狀態」重新套用整組座標，而不是逐格累加：
- * 這樣整段拖曳只留下一筆復原紀錄。已經有記號的格子一律跳過，
- * 拖曳只寫入、不擦除，也不會蓋掉已放好的柯基。
+ * 這樣整段拖曳只留下一筆復原紀錄，而且重複經過同一格也不會來回翻轉。
+ * 柯基與紅叉一律跳過 —— 那兩種已經定案。
  */
-export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): GameState {
+export function applyMarkStroke(
+  base: GameState,
+  cells: ReadonlySet<string>,
+  mode: StrokeMode = 'mark',
+): GameState {
   if (isLocked(base)) return base;
+
+  const from = mode === 'mark' ? CS.Empty : CS.Marked;
+  const to = mode === 'mark' ? CS.Marked : CS.Empty;
 
   const board = cloneBoard(base.board);
   let changed = 0;
@@ -306,8 +351,8 @@ export function applyMarkStroke(base: GameState, cells: ReadonlySet<string>): Ga
     const [rowText, colText] = cellKey.split(',');
     const row = Number(rowText);
     const col = Number(colText);
-    if (board[row]?.[col] !== CS.Empty) continue;
-    board[row]![col] = CS.Marked;
+    if (board[row]?.[col] !== from) continue;
+    board[row]![col] = to;
     changed += 1;
   }
 

@@ -1,38 +1,69 @@
 """
 Sprite sheet 校正工具
 
-產圖工具輸出的動畫表很少能直接用：畫布留白過多、排與排沒對齊、格子不是
-正方形，有時還會把格線和編號畫進圖裡。這支腳本把它們整成前端要的格式。
+產圖工具輸出的動畫表很少能直接用：畫布留白過多、排距不等分、格子不是正方形，
+有時還會把格線和編號畫進圖裡。更麻煩的是**三段動畫各自是不同比例畫的** ——
+同一隻柯基在 START 和 IDLE 裡佔畫面的比例不一樣，播放時就會忽大忽小。
 
-作法是「切格 → 取內容 → 重新對齊」：
-  1. 依指定的欄數／排數把畫布均分成格
-  2. （選用）先剝掉格線與編號
-  3. 量出每一格裡實際有畫東西的範圍
-  4. 開一張正方形畫布，把每格內容以「底部對齊、水平置中」放進去
-  5. 輸出格線切齊、正方形、無多餘留白的新表
+所以這支腳本一次處理全部三張，而不是一張一張跑：
 
-底部對齊是因為這組動畫都是「趴上窗台往外看」—— 角色被下緣切斷，那條切線
-就是最穩定的基準。用內容中心對齊反而會讓角色在播放時上下漂。
+  1. 依指定的欄／排把每張畫布切格（排距優先用內容帶偵測，因為常常不等分）
+  2. （選用）剝掉格線與編號
+  3. 量出每張 sheet 內所有影格的內容範圍，取聯集當成該 sheet 的「作用區」
+  4. 以作用區裁切每一格 —— 用同一個矩形裁全部，影格之間的相對位移才會保留，
+     角色在段落內的移動（例如 START 從畫面外升起）不會被抹平
+  5. 跨 sheet 統一縮放：以「頭寬的中位數」為基準。
+     頭寬取每一格內容上緣 30% 那一段的寬度，只涵蓋耳朵與額頭。
+     取中位數而不是最大值，因為 START 有一格是雙掌舉到頭邊，最大值會被
+     那格灌水；取整格全寬也不行，會被前腳張開的姿勢拉偏。
+     這是實測五種基準並排比對後最接近的一種，但仍無法完全對齊 ——
+     三張素材本來就是各自用不同比例與裁切畫的，後製只能逼近。
+     根治要從產圖端統一，見 art/PROMPT.md。
+  6. 統一對齊：作用區底緣（也就是「窗台」那條線）對到格子裡的同一個高度
 
 用法：
-    python scripts/normalize-sprites.py public/sprites/corgi-start.png --cols 6 --rows 2
-    python scripts/normalize-sprites.py public/sprites/corgi-loop.png --cols 6 --rows 4 \
-        --strip-grid 3 --strip-label 90x60
+    python scripts/normalize-sprites.py                       # 三張分開的素材
+    python scripts/normalize-sprites.py --single art/raw/corgi-all.png --cols 8 --rows 6
 
-原圖會先備份到 art/raw/，然後就地覆寫成校正後的版本。
+--single 是給「三段畫在同一張圖上」的素材用的（見 art/PROMPT.md）。
+那種素材的角色比例天然一致，不必跨 sheet 校正，只要依影格數切成三段即可，
+品質也遠比三張分開產的好。
+
+原圖從 art/raw/ 讀、結果寫回 public/sprites/。校正是破壞性的，拿校正過的
+結果再校正一次只會愈跑愈糟，所以來源永遠是備份。
 """
 
 import argparse
 import os
 import shutil
+import statistics
 
 import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BACKUP_DIR = os.path.join(HERE, "..", "art", "raw")
+RAW_DIR = os.path.join(HERE, "..", "art", "raw")
+OUT_DIR = os.path.join(HERE, "..", "public", "sprites")
 
 ALPHA_THRESHOLD = 16
+
+# 輸出的單格尺寸。頭寬會被縮到佔這個寬度的 TARGET_FILL，留下的邊距讓圓角
+# 裁切不會啃到耳朵。
+CELL = 256
+TARGET_FILL = 0.62
+# 作用區底緣要對到的位置，離格子底部留一點空隙
+BOTTOM_MARGIN = 10
+# 作用區最多佔格子的比例。留邊是必要的 —— 格子有圓角又會裁切，
+# 貼到邊就會啃掉耳朵。頭寬對齊之後某些 sheet 的整體輪廓仍可能偏寬，
+# 這道上限確保它們一律再縮進來。
+MAX_UNION_FILL = 0.88
+
+# 每張 sheet 的切法。cols/rows 要跟素材實際排版一致。
+SHEETS = [
+    {"file": "corgi-start.png", "cols": 6, "rows": 2},
+    {"file": "corgi-idle.png", "cols": 12, "rows": 1},
+    {"file": "corgi-loop.png", "cols": 6, "rows": 4, "strip_grid": 3, "strip_label": (95, 62)},
+]
 
 
 def find_row_bands(alpha, min_gap=8):
@@ -49,7 +80,6 @@ def find_row_bands(alpha, min_gap=8):
     if start is not None:
         bands.append([start, len(filled) - 1])
 
-    # 角色身上的細縫也會產生空白列，把靠太近的段落併回去
     merged = []
     for band in bands:
         if merged and band[0] - merged[-1][1] - 1 < min_gap:
@@ -61,31 +91,17 @@ def find_row_bands(alpha, min_gap=8):
 
 def row_ranges(alpha, height, rows):
     """
-    決定每一排的 y 範圍。
-
-    優先用內容帶，因為產圖工具排版時排距未必等分 —— 實測有一張的兩排相距
-    339px，但畫布高度對半是 362，平均分割會把第一排的下緣切進第二排，
-    在畫面上就是憑空多出一條橫槓。帶數對不上時才退回平均分割。
+    決定每一排的 y 範圍。優先用內容帶 —— 產圖工具的排距未必等分，
+    實測有一張的兩排相距 339px 但畫布高度對半是 362，平均分割會把第一排的
+    下緣切進第二排，畫面上就憑空多出一條橫槓。
     """
     bands = find_row_bands(alpha)
     if len(bands) == rows:
-        print("  排距由內容帶決定：%s" % (bands,))
         return bands
-    print("  內容帶有 %d 段、需要 %d 排，改用平均分割" % (len(bands), rows))
     return [(round(r * height / rows), round((r + 1) * height / rows) - 1) for r in range(rows)]
 
 
-def cell_boxes(width, cols, bands):
-    """欄用平均分割（產圖工具的欄距一向是準的），排用傳進來的範圍。"""
-    for r, (y0, y1) in enumerate(bands):
-        for c in range(cols):
-            x0 = round(c * width / cols)
-            x1 = round((c + 1) * width / cols)
-            yield (r, c, x0, y0, x1, y1 + 1)
-
-
 def content_bbox(alpha):
-    """這一格裡實際有畫東西的範圍；整格空白回傳 None。"""
     ys = np.nonzero((alpha > ALPHA_THRESHOLD).sum(axis=1))[0]
     xs = np.nonzero((alpha > ALPHA_THRESHOLD).sum(axis=0))[0]
     if len(ys) == 0 or len(xs) == 0:
@@ -93,93 +109,200 @@ def content_bbox(alpha):
     return int(xs[0]), int(ys[0]), int(xs[-1]), int(ys[-1])
 
 
-def normalize(path, cols, rows, out_path, strip_grid=0, strip_label=None, pad=0.04):
+# 頭部大約佔內容高度的上面這一段。取太多會吃到前腳，取太少在側面姿勢會抓不到耳朵。
+HEAD_BAND = 0.30
+
+
+def head_width(alpha, box):
+    """量頭寬：只看內容上半部的最大寬度，避開前腳與身體。"""
+    if box is None:
+        return 0
+    x0, y0, x1, y1 = box
+    band_bottom = y0 + max(1, int((y1 - y0 + 1) * HEAD_BAND))
+    band = alpha[y0:band_bottom, x0 : x1 + 1]
+    xs = np.nonzero((band > ALPHA_THRESHOLD).sum(axis=0))[0]
+    return int(xs[-1] - xs[0] + 1) if len(xs) else 0
+
+
+def load_tiles(spec):
+    """把一張 sheet 切成影格清單，並回傳每格的內容範圍（格內座標）。"""
+    path = os.path.join(RAW_DIR, spec["file"])
     image = Image.open(path).convert("RGBA")
     width, height = image.size
-    frames = cols * rows
-    print("  來源 %dx%d，切成 %d 欄 × %d 排 = %d 格" % (width, height, cols, rows, frames))
+    cols, rows = spec["cols"], spec["rows"]
+    strip_grid = spec.get("strip_grid", 0)
+    strip_label = spec.get("strip_label")
 
     bands = row_ranges(np.array(image)[:, :, 3], height, rows)
-
-    # 先把每一格裁出來，順便剝掉格線與編號
     tiles = []
-    for r, c, x0, y0, x1, y1 in cell_boxes(width, cols, bands):
-        tile = image.crop((x0 + strip_grid, y0 + strip_grid, x1 - strip_grid, y1 - strip_grid))
-        if strip_label:
-            # 編號畫在每格左上角的空白處，整塊清成透明
-            lw, lh = strip_label
-            eraser = Image.new("RGBA", (min(lw, tile.width), min(lh, tile.height)), (0, 0, 0, 0))
-            tile.paste(eraser, (0, 0))
-        tiles.append(((r, c), tile))
 
-    # 量出所有格子裡內容的最大寬高，決定共用的格子尺寸
-    boxes = []
-    for key, tile in tiles:
-        box = content_bbox(np.array(tile)[:, :, 3])
-        boxes.append((key, tile, box))
-        if box is None:
-            print("  !! 第 %d 格是空的" % (key[0] * cols + key[1] + 1))
+    for r, (y0, y1) in enumerate(bands):
+        for c in range(cols):
+            x0 = round(c * width / cols)
+            x1 = round((c + 1) * width / cols)
+            tile = image.crop((x0 + strip_grid, y0 + strip_grid, x1 - strip_grid, y1 + 1 - strip_grid))
+            if strip_label:
+                lw, lh = strip_label
+                blank = Image.new("RGBA", (min(lw, tile.width), min(lh, tile.height)), (0, 0, 0, 0))
+                tile.paste(blank, (0, 0))
+            tiles.append(tile)
 
-    widths = [b[2] - b[0] + 1 for _, _, b in boxes if b]
-    heights = [b[3] - b[1] + 1 for _, _, b in boxes if b]
-    if not widths:
-        raise SystemExit("整張圖都是空的")
-
-    cell = max(max(widths), max(heights))
-    cell = int(round(cell * (1 + pad)))
-    if cell % 2:
-        cell += 1
-    print(
-        "  內容最大 %dx%d → 單格 %dx%d（含 %d%% 邊距）"
-        % (max(widths), max(heights), cell, cell, round(pad * 100))
-    )
-
-    sheet = Image.new("RGBA", (cell * cols, cell * rows), (0, 0, 0, 0))
-    # 底部留一點空隙，角色才不會緊貼格子下緣
-    bottom_margin = (cell - max(heights)) // 2
-
-    for (r, c), tile, box in boxes:
-        if box is None:
-            continue
-        cropped = tile.crop((box[0], box[1], box[2] + 1, box[3] + 1))
-        dx = c * cell + (cell - cropped.width) // 2
-        dy = r * cell + cell - bottom_margin - cropped.height
-        sheet.paste(cropped, (dx, dy), cropped)
-
-    sheet.save(out_path)
-    print("  輸出 %s（%dx%d）" % (out_path, sheet.width, sheet.height))
-
-
-def parse_size(text):
-    w, h = text.lower().split("x")
-    return int(w), int(h)
+    boxes = [content_bbox(np.array(t)[:, :, 3]) for t in tiles]
+    return image, tiles, boxes, bands
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("path")
-    ap.add_argument("--cols", type=int, required=True)
-    ap.add_argument("--rows", type=int, required=True)
-    ap.add_argument("--strip-grid", type=int, default=0, help="每格四周先裁掉幾像素（去格線）")
-    ap.add_argument("--strip-label", type=parse_size, default=None, help="清掉左上角編號的區域，例如 90x60")
-    ap.add_argument("--out")
-    args = ap.parse_args()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    prepared = []
 
-    target = os.path.abspath(args.path)
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    backup = os.path.join(BACKUP_DIR, os.path.basename(target))
+    # 第一輪：切格、量尺寸
+    for spec in SHEETS:
+        raw_path = os.path.join(RAW_DIR, spec["file"])
+        if not os.path.exists(raw_path):
+            # 沒有備份就先把 public 裡的當原圖存起來
+            live = os.path.join(OUT_DIR, spec["file"])
+            if not os.path.exists(live):
+                raise SystemExit("找不到 %s" % spec["file"])
+            os.makedirs(RAW_DIR, exist_ok=True)
+            shutil.copy2(live, raw_path)
+            print("原圖備份到 %s" % raw_path)
 
-    # art/raw/ 是原始檔的唯一來源。校正是破壞性的，若拿已經校正過的結果再校正
-    # 一次只會愈跑愈糟，所以永遠從備份讀、寫回 public/sprites/。
-    if not os.path.exists(backup):
-        shutil.copy2(target, backup)
-        print("原圖備份到 %s" % backup)
-    src = backup
-    out = os.path.abspath(args.out) if args.out else target
+        _, tiles, boxes, bands = load_tiles(spec)
+        alphas = [np.array(t)[:, :, 3] for t in tiles]
+        heads = [head_width(a, b) for a, b in zip(alphas, boxes) if b]
+        reference_width = statistics.median(heads)
 
-    print("校正 %s → %s" % (src, out))
-    normalize(src, args.cols, args.rows, out, args.strip_grid, args.strip_label)
+        # 作用區：這張 sheet 所有影格內容的聯集。用同一個矩形裁全部，
+        # 影格之間的相對位移才會保留。
+        lefts = [b[0] for b in boxes if b]
+        tops = [b[1] for b in boxes if b]
+        rights = [b[2] for b in boxes if b]
+        bottoms = [b[3] for b in boxes if b]
+        union = (min(lefts), min(tops), max(rights), max(bottoms))
+
+        prepared.append(
+            {
+                "spec": spec,
+                "tiles": tiles,
+                "union": union,
+                "reference_width": reference_width,
+                "bands": bands,
+            }
+        )
+        print(
+            "%-18s %d 欄 × %d 排　排區間 %s"
+            % (spec["file"], spec["cols"], spec["rows"], bands)
+        )
+        print(
+            "                   頭寬中位數 %.0f　作用區 %dx%d"
+            % (reference_width, union[2] - union[0] + 1, union[3] - union[1] + 1)
+        )
+
+    # 第二輪：用共同的目標寬度換算各自的縮放比，再輸出
+    target_width = CELL * TARGET_FILL
+    print("\n目標：柯基寬度統一縮到 %.0f px（單格 %d）" % (target_width, CELL))
+
+    for item in prepared:
+        spec = item["spec"]
+        cols, rows = spec["cols"], spec["rows"]
+        ux0, uy0, ux1, uy1 = item["union"]
+        scale = target_width / item["reference_width"]
+
+        union_w = ux1 - ux0 + 1
+        union_h = uy1 - uy0 + 1
+        out_w = max(1, round(union_w * scale))
+        out_h = max(1, round(union_h * scale))
+
+        limit_w = CELL * MAX_UNION_FILL
+        limit_h = (CELL - BOTTOM_MARGIN) * MAX_UNION_FILL
+        if out_w > limit_w or out_h > limit_h:
+            # 超過上限就整體再縮，寧可小一點也不要被圓角啃掉
+            shrink = min(limit_w / out_w, limit_h / out_h)
+            scale *= shrink
+            out_w = max(1, round(union_w * scale))
+            out_h = max(1, round(union_h * scale))
+
+        sheet = Image.new("RGBA", (CELL * cols, CELL * rows), (0, 0, 0, 0))
+        dx = (CELL - out_w) // 2
+        dy = CELL - BOTTOM_MARGIN - out_h
+
+        for index, tile in enumerate(item["tiles"]):
+            r, c = divmod(index, cols)
+            # 每一格都用同一個作用區矩形裁，相對位移因此完整保留
+            cropped = tile.crop((ux0, uy0, ux1 + 1, uy1 + 1)).resize((out_w, out_h), Image.LANCZOS)
+            sheet.paste(cropped, (c * CELL + dx, r * CELL + dy), cropped)
+
+        out_path = os.path.join(OUT_DIR, spec["file"])
+        sheet.save(out_path)
+        print(
+            "  %-18s 縮放 %.3f → 作用區 %dx%d，輸出 %dx%d"
+            % (spec["file"], scale, out_w, out_h, sheet.width, sheet.height)
+        )
+
+
+def split_single(path, cols, rows):
+    """
+    把「三段畫在同一張圖」的素材切成三個 sheet。
+
+    這種素材不需要跨 sheet 縮放校正 —— 48 格畫在同一張圖上，角色比例本來
+    就一致。這裡只做兩件事：依影格數切段，以及用全圖的作用區統一裁切，
+    讓三段的取景完全相同。
+    """
+    image = Image.open(path).convert("RGBA")
+    width, height = image.size
+    cell_w, cell_h = width / cols, height / rows
+
+    tiles = []
+    for index in range(cols * rows):
+        r, c = divmod(index, cols)
+        tiles.append(
+            image.crop((round(c * cell_w), round(r * cell_h), round((c + 1) * cell_w), round((r + 1) * cell_h)))
+        )
+
+    boxes = [content_bbox(np.array(t)[:, :, 3]) for t in tiles]
+    valid = [b for b in boxes if b]
+    if not valid:
+        raise SystemExit("整張圖都是空的")
+    union = (
+        min(b[0] for b in valid),
+        min(b[1] for b in valid),
+        max(b[2] for b in valid),
+        max(b[3] for b in valid),
+    )
+    ux0, uy0, ux1, uy1 = union
+    union_w, union_h = ux1 - ux0 + 1, uy1 - uy0 + 1
+
+    scale = min((CELL * MAX_UNION_FILL) / union_w, ((CELL - BOTTOM_MARGIN) * MAX_UNION_FILL) / union_h)
+    out_w, out_h = max(1, round(union_w * scale)), max(1, round(union_h * scale))
+    dx, dy = (CELL - out_w) // 2, CELL - BOTTOM_MARGIN - out_h
+
+    print("單張素材 %dx%d，%d 欄 × %d 排 = %d 格" % (width, height, cols, rows, cols * rows))
+    print("  作用區 %dx%d，縮放 %.3f → %dx%d" % (union_w, union_h, scale, out_w, out_h))
+
+    # 段落切分要與 src/ui/sprites.ts 的 frames 一致
+    segments = [("corgi-start.png", 0, 12, 6), ("corgi-idle.png", 12, 24, 12), ("corgi-loop.png", 24, 48, 6)]
+    for name, start, end, seg_cols in segments:
+        frames = tiles[start:end]
+        seg_rows = -(-len(frames) // seg_cols)
+        sheet = Image.new("RGBA", (CELL * seg_cols, CELL * seg_rows), (0, 0, 0, 0))
+        for i, tile in enumerate(frames):
+            r, c = divmod(i, seg_cols)
+            cropped = tile.crop((ux0, uy0, ux1 + 1, uy1 + 1)).resize((out_w, out_h), Image.LANCZOS)
+            sheet.paste(cropped, (c * CELL + dx, r * CELL + dy), cropped)
+        out_path = os.path.join(OUT_DIR, name)
+        sheet.save(out_path)
+        print("  %-18s %d 格 = %d 欄 × %d 排，輸出 %dx%d" % (name, len(frames), seg_cols, seg_rows, sheet.width, sheet.height))
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--single", help="三段畫在同一張圖的素材路徑")
+    ap.add_argument("--cols", type=int, default=8)
+    ap.add_argument("--rows", type=int, default=6)
+    args = ap.parse_args()
+
+    if args.single:
+        os.makedirs(OUT_DIR, exist_ok=True)
+        split_single(args.single, args.cols, args.rows)
+    else:
+        main()

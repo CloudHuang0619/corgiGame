@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyMarkStroke,
   createGame,
+  strokeModeFor,
+  DOUBLE_TAP_MS,
   elapsedMs,
   formatTime,
   getHint,
@@ -24,7 +26,7 @@ import {
   tapCell,
   undo as undoGame,
 } from '../../core/game.ts';
-import type { GameState } from '../../core/game.ts';
+import type { GameState, StrokeMode } from '../../core/game.ts';
 import { getLevel, LAST_LEVEL } from '../../core/levels.ts';
 import { loadSession, saveSession, clearSession } from '../../core/storage.ts';
 import type { PlayerProfile, Settings } from '../../core/storage.ts';
@@ -129,11 +131,28 @@ export function Game({
     if (isFailed(game)) setDialog('fail');
   }, [game]);
 
+  /*
+   * 快速連點同一格 = 放柯基，其餘都是切換叉號。
+   *
+   * 時間窗放在這一層而不是核心：這純粹是輸入判讀，遊戲規則不該知道
+   * 玩家點得多快。核心只收到「這一下要切叉號還是要放柯基」。
+   */
+  const lastTap = useRef<{ row: number; col: number; at: number } | null>(null);
+
   const handleTap = useCallback(
     (row: number, col: number) => {
+      const previous = lastTap.current;
+      const at = Date.now();
+      const quickRepeat =
+        previous !== null &&
+        previous.row === row &&
+        previous.col === col &&
+        at - previous.at <= DOUBLE_TAP_MS;
+      lastTap.current = { row, col, at };
+
       setHint(null);
       setGame((prev) => {
-        const result = tapCell(prev, row, col);
+        const result = tapCell(prev, row, col, quickRepeat ? 'place' : 'toggle');
         if (result.award !== null) {
           setFloat({ award: result.award, title: result.title });
           window.setTimeout(() => {
@@ -153,22 +172,27 @@ export function Game({
   );
 
   // 拖曳標記：每次都從拖曳前的狀態重算，整段只留一筆復原紀錄
-  const strokeRef = useRef<{ base: GameState; cells: Set<string> } | null>(null);
+  const strokeRef = useRef<{ base: GameState; cells: Set<string>; mode: StrokeMode } | null>(null);
   const gameRef = useRef(game);
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
 
-  const handleStrokeStart = useCallback(() => {
+  const handleStrokeStart = useCallback((row: number, col: number) => {
     setHint(null);
-    strokeRef.current = { base: gameRef.current, cells: new Set() };
+    // 拖曳結束後手指還在盤面上，若不清掉連點紀錄，接下來那一擊
+    // 可能被誤判成「快速連點」而放出柯基
+    lastTap.current = null;
+    const base = gameRef.current;
+    // 模式由起點決定：從叉號開始就是擦，從空白開始就是塗
+    strokeRef.current = { base, cells: new Set(), mode: strokeModeFor(base, row, col) };
   }, []);
 
   const handleStrokePaint = useCallback((row: number, col: number) => {
     const stroke = strokeRef.current;
     if (!stroke) return;
     stroke.cells.add(key(row, col));
-    setGame(applyMarkStroke(stroke.base, stroke.cells));
+    setGame(applyMarkStroke(stroke.base, stroke.cells, stroke.mode));
   }, []);
 
   const handleHint = useCallback(() => {
@@ -280,8 +304,7 @@ export function Game({
               setHint(null);
               // 提示指的一定是正解，所以連點兩次讓它走完整的放置流程
               setGame((prev) => {
-                const marked = tapCell(prev, row, col);
-                const placed = tapCell(marked.state, row, col);
+                const placed = tapCell(prev, row, col, 'place');
                 if (placed.award !== null) {
                   setFloat({ award: placed.award, title: placed.title });
                   window.setTimeout(() => {
