@@ -135,11 +135,13 @@ jobs:
           node-version: 24
           cache: npm
 
-      # enablement 會在 repo 還沒開 Pages 時自動開起來，省掉去
-      # Settings 手動設定的那一步
+      # 這一步只讀取 Pages 的設定（拿 base path 給 build 用），不會建立站台。
+      #
+      # 原本帶了 enablement: true 想自動開啟，但那會失敗：建立 Pages 站台的
+      # API 需要 repo 管理權限，Actions 的預設 GITHUB_TOKEN 給不到。所以
+      # Pages 必須先在 Settings → Pages → Source 選 "GitHub Actions" 手動
+      # 開一次，之後這個 workflow 才跑得動。
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - run: npm ci
 
