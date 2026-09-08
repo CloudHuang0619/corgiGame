@@ -154,6 +154,15 @@ private repo 開 Pages 需要 GitHub Pro。要保持私有又要有公開網址�
 `macos-latest` 上建 arm64 實機版，產出 `Corgidoku-unsigned.ipa`，掛在該次執行的
 artifact 底下（保留 14 天）。
 
+**它不跟著每次 push 跑**，要拿 IPA 有兩個方式：
+
+- Actions 頁面選 `build` → **Run workflow**
+- 推一個 `v` 開頭的 tag（例如 `git tag v1.0.0 && git push --tags`）
+
+這樣設是因為它驗證的是原生相依裝不裝得起來，那件事不會因為改一行 CSS 就變化。
+而且 repo 若轉為私有，macOS runner 是 **10 倍計費**，一次就扣掉 20 分鐘額度——
+Free 方案每月 2,000 分鐘是整個帳號共用的。
+
 **這顆 IPA 裝不上一般 iPhone。** iOS 拒絕執行未簽章的程式碼，這是系統層級的限制，
 不是設定漏了什麼。它的用途是證明實機架構編得過，以及當作重簽的起點。
 

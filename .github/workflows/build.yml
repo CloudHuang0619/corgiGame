@@ -22,6 +22,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -59,6 +60,16 @@ jobs:
 
   ios:
     name: iOS（實機，未簽章 IPA）
+    #
+    # 只在手動觸發或打 v* tag 時跑，不跟著每次 push。
+    #
+    # 一次約 2 分鐘，在公開 repo 上是免費的，但它驗證的是原生相依裝不裝得
+    # 起來——那件事不會因為改了一行 CSS 就變化，每次 push 都跑純粹是浪費。
+    # 而且 repo 一旦轉為私有，macOS 是 10 倍計費，一次就扣掉 20 分鐘額度；
+    # 現在先設好，那時就不必手忙腳亂。
+    #
+    # 要拿 IPA：Actions 頁面選 build → Run workflow，或推一個 v 開頭的 tag。
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
