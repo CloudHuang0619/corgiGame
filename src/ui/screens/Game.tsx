@@ -339,9 +339,37 @@ export function Game({
         </button>
 
         <div className="game-stats">
-          <div>
+          <div className="stat-level">
             <span className="stat-label">{t('game.level')}</span>
-            <span className="stat-value">{level}</span>
+            {/*
+              * 測試工具：± 快捷鈕。預設不顯示 —— 正式流程是線性關卡、
+              * 沒有跳關入口，常駐的 ± 會讓那個設計失效。
+              */}
+            {settings.levelStepper ? (
+              <span className="stepper">
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  onClick={() => onGoToLevel(level - 1)}
+                  disabled={level <= 1}
+                  aria-label={t('dev.prevLevel')}
+                >
+                  −
+                </button>
+                <span className="stat-value">{level}</span>
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  onClick={() => onGoToLevel(level + 1)}
+                  disabled={level >= LAST_LEVEL}
+                  aria-label={t('dev.nextLevel')}
+                >
+                  +
+                </button>
+              </span>
+            ) : (
+              <span className="stat-value">{level}</span>
+            )}
           </div>
           <div className="stat-score">
             <span className="stat-label">{t('game.score')}</span>

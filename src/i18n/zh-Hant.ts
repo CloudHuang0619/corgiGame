@@ -44,6 +44,9 @@ export const zhHant = {
   'fail.title': '骨頭用完了',
   'fail.body': '三次都放錯了，這一關要重來。',
   'fail.tip': '放柯基之前，先把同列、同欄、同色區與周圍八格都標上叉號。',
+  'dev.levelStepper': '關卡 ± 快捷',
+  'dev.prevLevel': '上一關',
+  'dev.nextLevel': '下一關',
   'fail.watchAd': '看廣告換一根骨頭',
   'fail.retry': '再試一次',
 

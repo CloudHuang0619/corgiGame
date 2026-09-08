@@ -143,10 +143,18 @@ export interface Settings {
    * 缺這一欄時（既有玩家的存檔）預設 false，所以她走到第 50 關還是會看到。
    */
   readonly seenOverlapIntro: boolean;
+  /**
+   * 測試工具：關卡數字旁邊顯示 ± 快捷鈕。
+   *
+   * 預設關閉。正式流程是線性關卡、沒有跳關入口，常駐的 ± 會讓那個設計失效；
+   * 這只是開發時快速翻關卡用的，跟復原／看答案／選關卡同一類。
+   */
+  readonly levelStepper: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   seenOverlapIntro: false,
+  levelStepper: false,
   music: true,
   sfx: true,
   voice: true,

@@ -167,6 +167,17 @@ export function SettingsDialog({
             <button type="button" className="btn btn-ghost" onClick={dev.onPickLevel}>
               {t('dev.levelPicker')}
             </button>
+            {/*
+              * 開了之後關卡數字旁邊會出現 ± 快捷鈕。跟慢速播放一樣是切換式的，
+              * 所以用同一種樣式：開啟時實心、關閉時幽靈鈕。
+              */}
+            <button
+              type="button"
+              className={['btn', settings.levelStepper ? 'btn-primary' : 'btn-ghost'].join(' ')}
+              onClick={() => onChange({ ...settings, levelStepper: !settings.levelStepper })}
+            >
+              {t('dev.levelStepper')}
+            </button>
           </div>
           <p className="dev-note">
             {t('dev.timer')}：{dev.elapsed}

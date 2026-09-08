@@ -1466,3 +1466,44 @@ html.native .game {
   color: #fff;
   font-size: 0.85em;
 }
+
+/* ---------------------------------------------------------------------------
+ * 測試工具：關卡 ± 快捷
+ * ------------------------------------------------------------------------- */
+
+/*
+ * 用 grid 而不是 flex 置中，是因為關卡數字會從 1 位變到 3 位。flex 的話
+ * 數字一變寬，兩顆鈕就跟著左右移動，連點時很容易按錯。固定欄寬讓鈕的位置
+ * 不隨數字改變。
+ */
+.stat-level .stepper {
+  display: grid;
+  grid-template-columns: 26px minmax(2.2em, auto) 26px;
+  align-items: center;
+  justify-items: center;
+  gap: 2px;
+}
+
+.stepper-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.12));
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.stepper-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.stepper-btn:active:not(:disabled) {
+  transform: scale(0.9);
+}
