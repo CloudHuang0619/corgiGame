@@ -118,6 +118,34 @@ versionCode 2
 versionName "1.0.1"
 ```
 
+## 網頁版
+
+`.github/workflows/build.yml` 的 `pages` job 會把 `dist/` 部署到 GitHub Pages，
+網址 <https://cloudhuang0619.github.io/corgiGame/>。push 到 main 就自動更新。
+
+**網頁版沒有廣告。** `src/ads/` 在非原生平台每個函式都是 no-op，這是刻意的——
+遊戲程式碼不必到處寫 `if (isNative)`。所以這個網址適合給人試玩，但看不到任何
+廣告曝光或收益。
+
+### 一次性的設定
+
+Pages 必須先手動開啟，workflow 才跑得動：
+
+1. **Settings → Pages → Source** 選 **GitHub Actions**（預設是 Deploy from a branch）。
+2. **Settings → Actions → Workflow permissions** 要是 **Read and write permissions**。
+
+`configure-pages` 曾經帶 `enablement: true` 想省掉第一步，但那會失敗：建立 Pages
+站台的 API 需要 repo 管理權限，Actions 的預設 `GITHUB_TOKEN` 給不到。
+
+### repo 轉回 private 就會失效
+
+private repo 開 Pages 需要 GitHub Pro。要保持私有又要有公開網址，改用 Netlify
+或 Cloudflare Pages，兩者免費方案都吃 private repo。
+
+> 資源路徑能在 `/corgiGame/` 這種子路徑底下運作，是因為 `vite.config.ts` 的
+> `base` 設成 `'./'`。那個設定原本是為了 Capacitor 的 `file://` WebView，
+> 這裡剛好一併受益。
+
 ## iOS
 
 ### CI 產出的是什麼
