@@ -25,6 +25,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 部署需要的權限。預設的 GITHUB_TOKEN 只有讀取權，少了這三項
+# deploy-pages 會以 403 失敗。id-token 是給 Pages 的 OIDC 驗證用的。
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   web:
     name: 型別與網頁打包
@@ -109,3 +116,41 @@ jobs:
           path: Corgidoku-unsigned.ipa
           # 未簽章的 IPA 沒有長期保存價值，每次 push 都會有新的一顆
           retention-days: 14
+
+  pages:
+    name: 部署網頁版到 GitHub Pages
+    # 型別與關卡驗證沒過就不該把東西丟上線
+    needs: web
+    # 只有 main 才部署。PR 也跑 build.yml，但不該蓋掉線上版本
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # enablement 會在 repo 還沒開 Pages 時自動開起來，省掉去
+      # Settings 手動設定的那一步
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - run: npm ci
+
+      # vite.config.ts 的 base 是 './'，資源走相對路徑，所以放在
+      # /corgiGame/ 這種子路徑底下也找得到——那個設定原本是為了
+      # Capacitor 的 file:// WebView，這裡剛好一併受益
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
