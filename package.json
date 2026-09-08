@@ -11,7 +11,8 @@
     "levels": "tsx scripts/build-levels.ts",
     "verify": "tsx scripts/verify-levels.ts",
     "capacity": "tsx scripts/capacity.ts",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "composite": "tsx scripts/build-composite.ts"
   },
   "dependencies": {
     "@capacitor-community/admob": "^7.2.0",

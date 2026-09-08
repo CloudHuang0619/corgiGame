@@ -6,9 +6,11 @@
  * 都只是序列化一個物件的事。
  */
 
-import type { CellState, Coord, Failure, Puzzle, RuleId } from './types.ts';
-import { CellState as CS, FailureKind, RuleId as R } from './types.ts';
+import type { CellState, Coord, Failure, Puzzle, RuleId, SubBoard } from './types.ts';
+import { CellState as CS, FailureKind, RuleId as R, Technique } from './types.ts';
 import { nextHint } from './solver.ts';
+import { buildShape } from './shape.ts';
+import { analyseOn } from './solver-general.ts';
 import type { DeductionStep } from './solver.ts';
 
 /** 每關的命數。放錯一次扣一根，扣完就得重來。 */
@@ -111,12 +113,66 @@ export function corgiPositions(state: GameState): Coord[] {
   return result;
 }
 
-function rowCells(size: number, row: number): Coord[] {
-  return Array.from({ length: size }, (_, col) => ({ row, col }));
+/**
+ * 這一關要放幾隻柯基。
+ *
+ * 單一盤面等於邊長（每列一隻）。疊加型不成立 —— 共用格上的一隻柯基同時
+ * 滿足兩個子盤面，所以總數比「子盤面數 x 邊長」少，得看解答本身。
+ */
+export function corgiTarget(puzzle: Puzzle): number {
+  return puzzle.solutionCells ? puzzle.solutionCells.length : puzzle.size;
 }
 
-function colCells(size: number, col: number): Coord[] {
-  return Array.from({ length: size }, (_, row) => ({ row, col }));
+/** 正解的格子集合。單一盤面從 perm 轉出來，疊加型本來就是格子清單。 */
+export function solutionSet(puzzle: Puzzle): ReadonlySet<number> {
+  if (puzzle.solutionCells) return new Set(puzzle.solutionCells);
+  return new Set(puzzle.solution.map((col, row) => row * puzzle.size + col));
+}
+
+/** 涵蓋整張圖的預設子盤面 —— 讓單一盤面走跟疊加型同一條路徑。 */
+function boardsOf(puzzle: Puzzle): readonly SubBoard[] {
+  return puzzle.boards ?? [{ row: 0, col: 0, size: puzzle.size }];
+}
+
+function inBoard(b: SubBoard, row: number, col: number): boolean {
+  return row >= b.row && row < b.row + b.size && col >= b.col && col < b.col + b.size;
+}
+
+/**
+ * 跟 (row, col) 同「列」的所有格子。
+ *
+ * 疊加型的關鍵差別就在這裡：複合圖的一整列不是一個約束，而是每個子盤面
+ * 各自的一列。所以只取跟這一格同屬一個子盤面的那一段，跨到別的子盤面
+ * 就不算 —— 那一段有它自己的一隻柯基。
+ */
+function rowCells(puzzle: Puzzle, row: number, col: number): Coord[] {
+  const seen = new Set<number>();
+  const cells: Coord[] = [];
+  for (const b of boardsOf(puzzle)) {
+    if (!inBoard(b, row, col)) continue;
+    for (let c = b.col; c < b.col + b.size; c += 1) {
+      const k = row * puzzle.size + c;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      cells.push({ row, col: c });
+    }
+  }
+  return cells;
+}
+
+function colCells(puzzle: Puzzle, row: number, col: number): Coord[] {
+  const seen = new Set<number>();
+  const cells: Coord[] = [];
+  for (const b of boardsOf(puzzle)) {
+    if (!inBoard(b, row, col)) continue;
+    for (let r = b.row; r < b.row + b.size; r += 1) {
+      const k = r * puzzle.size + col;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      cells.push({ row: r, col });
+    }
+  }
+  return cells;
 }
 
 function regionCells(puzzle: Puzzle, letter: string): Coord[] {
@@ -152,9 +208,20 @@ export function findRuleConflict(state: GameState, row: number, col: number): Fa
   const size = puzzle.size;
   const letter = puzzle.regions[row]![col]!;
 
+  const sameRow = new Set(rowCells(puzzle, row, col).map((c) => c.row * size + c.col));
+  const sameCol = new Set(colCells(puzzle, row, col).map((c) => c.row * size + c.col));
+
   const check: { rule: RuleId; hit: boolean; cells: () => Coord[] }[] = [
-    { rule: R.Row, hit: cats.some((c) => c.row === row), cells: () => rowCells(size, row) },
-    { rule: R.Col, hit: cats.some((c) => c.col === col), cells: () => colCells(size, col) },
+    {
+      rule: R.Row,
+      hit: cats.some((c) => sameRow.has(c.row * size + c.col)),
+      cells: () => rowCells(puzzle, row, col),
+    },
+    {
+      rule: R.Col,
+      hit: cats.some((c) => sameCol.has(c.row * size + c.col)),
+      cells: () => colCells(puzzle, row, col),
+    },
     {
       rule: R.Region,
       hit: cats.some((c) => puzzle.regions[c.row]![c.col] === letter),
@@ -204,7 +271,7 @@ export function placeCorgi(state: GameState, row: number, col: number, now = Dat
   const conflict = findRuleConflict(state, row, col);
   if (conflict) return fail(state, conflict);
 
-  const correct = state.puzzle.solution[row] === col;
+  const correct = solutionSet(state.puzzle).has(row * state.puzzle.size + col);
   if (!correct) {
     return fail(state, { kind: FailureKind.NotSolution, cell: { row, col } });
   }
@@ -214,7 +281,7 @@ export function placeCorgi(state: GameState, row: number, col: number, now = Dat
   const catsPlaced = state.catsPlaced + 1;
   const streak = state.streak + 1;
   const award = awardFor(catsPlaced);
-  const solved = catsPlaced === state.puzzle.size;
+  const solved = catsPlaced === corgiTarget(state.puzzle);
 
   return {
     state: {
@@ -443,12 +510,46 @@ export interface Hint {
  * 由玩家按「套用」才放下。
  */
 export function getHint(state: GameState): Hint | null {
+  const { puzzle } = state;
+
+  /*
+   * 疊加型走通用推論引擎。舊的 nextHint 以「每列一隻」為前提，用 row 當
+   * Map 的鍵；複合圖的一列可能有兩隻（分屬兩個子盤面），那個鍵會撞掉，
+   * 給出的提示會是錯的。
+   */
+  if (puzzle.boards && puzzle.boards.length > 1) {
+    const shape = buildShape(puzzle.boards, puzzle.regions);
+    const correct = solutionSet(puzzle);
+    // 玩家可能放錯，錯的線索餵進推論只會得到矛盾。先濾掉不在正解上的
+    const valid = corgiPositions(state)
+      .map(({ row, col }) => row * puzzle.size + col)
+      .filter((idx) => correct.has(idx));
+
+    const known = new Set(valid);
+    const result = analyseOn(shape, valid);
+    const fresh = result.steps.find((s) => !known.has(s.cell));
+    const cellIdx = fresh
+      ? fresh.cell
+      // 推不出下一步時退回用正解補一格，跟單一盤面的行為一致
+      : puzzle.solutionCells!.find((idx) => !known.has(idx));
+    if (cellIdx === undefined) return null;
+
+    const row = Math.floor(cellIdx / puzzle.size);
+    const col = cellIdx % puzzle.size;
+    const reason = fresh?.reason ?? 'row';
+    return {
+      step: { row, col, reason, technique: fresh?.technique ?? Technique.Advanced },
+      cell: { row, col },
+      regionLetter: reason === 'region' ? puzzle.regions[row]![col]! : null,
+    };
+  }
+
   const placed = new Map<number, number>();
   for (const { row, col } of corgiPositions(state)) {
     if (!placed.has(row)) placed.set(row, col);
   }
 
-  const step = nextHint(state.puzzle.regions, state.puzzle.solution, placed);
+  const step = nextHint(puzzle.regions, puzzle.solution, placed);
   if (!step) return null;
 
   return {

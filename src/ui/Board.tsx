@@ -131,10 +131,40 @@ export const Board = memo(function Board({
       aria-label={`${size} 乘 ${size} 的盤面`}
       onPointerMove={handlePointerMove}
     >
+      {/*
+        * 疊加型的子盤面外框。用一層覆蓋在盤面上的同規格網格來畫，而不是把
+        * 外框做成 grid item —— 後者會參與自動排版，把後面的格子擠位。
+        */}
+      {puzzle.boards && puzzle.boards.length > 1 && (
+        <div
+          className="subboards"
+          style={{ gridTemplateColumns: `repeat(${size}, 1fr)`, gridTemplateRows: `repeat(${size}, 1fr)` }}
+          aria-hidden="true"
+        >
+          {puzzle.boards.map((b, i) => (
+            <div
+              key={`sb-${i}`}
+              className="subboard"
+              style={{
+                gridRow: `${b.row + 1} / span ${b.size}`,
+                gridColumn: `${b.col + 1} / span ${b.size}`,
+              }}
+            />
+          ))}
+        </div>
+      )}
       {board.map((rowCells, row) =>
         rowCells.map((cell, col) => {
           const cellKey = key(row, col);
           const region = puzzle.regions[row]![col]!;
+
+          /*
+           * 複合圖的外接方框裡有空洞。這些格子仍要佔一個網格位置，版面才不會
+           * 塌掉，但不能是按鈕 —— 不可點、不進 tab 順序、也不該被螢幕閱讀器唸到。
+           */
+          if (region === '.') {
+            return <div key={cellKey} className="cell is-void" aria-hidden="true" />;
+          }
           const isHint = hintCell?.row === row && hintCell.col === col;
           const settled = cell === CellState.Corgi || cell === CellState.Error;
 

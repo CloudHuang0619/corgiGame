@@ -384,6 +384,7 @@ button:disabled {
 }
 
 .board {
+  position: relative; /* 子盤面外框（.subboards）要以此為定位基準 */
   display: grid;
   gap: 1.4%;
   width: 100%;
@@ -1372,4 +1373,37 @@ svg.cell-corgi .corgi-tongue {
  */
 html.native .game {
   padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------------------------------------------------------------------------
+ * 疊加型盤面
+ * ------------------------------------------------------------------------- */
+
+/*
+ * 複合圖的外接方框裡會有空洞。空洞格仍佔一個網格位置 —— 拿掉的話後面的格子
+ * 會往前遞補，整個版面就錯位了 —— 但畫成完全透明，看起來就是盤面缺了一角。
+ */
+.cell.is-void {
+  background: transparent !important;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/*
+ * 子盤面外框覆蓋在盤面之上。用同規格的網格對齊，而不是算絕對座標，
+ * 這樣 .board 的 gap 或 aspect-ratio 改了也不會跑掉。
+ */
+.subboards {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 1.4%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.subboard {
+  border: 2.5px solid var(--ink);
+  border-radius: calc(var(--radius) * 0.6);
+  opacity: 0.28;
 }

@@ -366,7 +366,12 @@ export function Game({
         </div>
       </div>
 
-      <RuleChips t={t} highlight={violated} pulse={entering} />
+      <RuleChips
+        t={t}
+        highlight={violated}
+        pulse={entering}
+        composite={(game.puzzle.boards?.length ?? 1) > 1}
+      />
 
       <div className="board-frame">
         {float && (

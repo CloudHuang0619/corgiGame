@@ -17,6 +17,11 @@ interface RuleChipsProps {
   readonly highlight: RuleId | null;
   /** 關卡進場時整列閃一次外框，引導玩家注意規則 */
   readonly pulse?: boolean;
+  /**
+   * 疊加型盤面。「每行每列各一隻」在複合圖上是錯的 —— 一整列跨越兩個
+   * 子盤面，兩邊各要一隻 —— 所以那條規則要換句話說。
+   */
+  readonly composite?: boolean;
 }
 
 const CELL = 11;
@@ -71,7 +76,7 @@ function MiniCross({ r, c }: { r: number; c: number }) {
   );
 }
 
-export function RuleChips({ t, highlight, pulse = false }: RuleChipsProps) {
+export function RuleChips({ t, highlight, pulse = false, composite = false }: RuleChipsProps) {
   const pale = '#EDE3D6';
   const chips: { rule: RuleId; label: string; art: React.ReactNode }[] = [
     {
@@ -91,7 +96,7 @@ export function RuleChips({ t, highlight, pulse = false }: RuleChipsProps) {
     },
     {
       rule: R.Row,
-      label: t('game.rule.line'),
+      label: t(composite ? 'game.rule.lineComposite' : 'game.rule.line'),
       // 一隻柯基，同列同欄被排除
       art: (
         <MiniBoard>

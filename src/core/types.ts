@@ -59,9 +59,34 @@ export type Technique = (typeof Technique)[keyof typeof Technique];
 export interface Puzzle {
   /** 關卡編號，從 1 起算 */
   readonly level: number;
+  /**
+   * 盤面邊長。疊加型是複合圖的外接正方形邊長，`regions` 裡用 '.' 標出空洞。
+   */
   readonly size: number;
   readonly regions: RegionGrid;
+  /**
+   * 單一盤面的解：solution[row] = 該列柯基所在的欄。
+   *
+   * 疊加型沒有這種表示法可用 —— 複合圖的一列跨越兩個子盤面，兩邊各要一隻，
+   * 不是排列 —— 所以那時解答改放在 `solutionCells`，這一欄留空陣列。
+   */
   readonly solution: Solution;
+  /**
+   * 疊加型才有：構成複合圖的子盤面清單。缺席就是單一正方形盤面。
+   *
+   * 用「有沒有這一欄」而不是另加一個 type 標記，是因為它同時也是資料：
+   * UI 要靠它畫子盤面外框，規則檢查要靠它算「這一格屬於哪些列與欄」。
+   */
+  readonly boards?: readonly SubBoard[];
+  /** 疊加型的解答，格子索引（row * size + col），升冪排序。 */
+  readonly solutionCells?: readonly number[];
+}
+
+/** 疊加型的一個子盤面：左上角座標與邊長。 */
+export interface SubBoard {
+  readonly row: number;
+  readonly col: number;
+  readonly size: number;
 }
 
 /** 四條規則。違規時 UI 要知道是哪一條，才能高亮對應的規則卡。 */
