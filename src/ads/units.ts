@@ -32,18 +32,37 @@ type Slot = keyof typeof TEST.android;
 
 const env = import.meta.env as Record<string, string | undefined>;
 
+/** 開發模式，或明確要求強制測試 */
+const forced = import.meta.env.DEV || env.VITE_ADMOB_FORCE_TEST === 'true';
+
+function platform(): keyof typeof TEST {
+  return Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
+}
+
 /**
- * 只有三個條件同時成立才會用正式 ID：正式建置、該平台該版位的 ID 有設、
- * 而且沒有明確要求強制測試。任何一個不成立就退回測試 ID——寧可少賺一次
- * 曝光，也不要在開發機上污染正式帳號的數據。
+ * 一個版位要用的廣告單元，以及這是不是測試廣告。
+ *
+ * 兩件事必須一起決定，不能分開算。先前把「用哪個 ID」與「isTesting 傳什麼」
+ * 拆成兩段邏輯，結果正式建置在沒設定 ID 時退回測試單元，卻仍然對 SDK 宣稱
+ * isTesting=false —— 拿測試單元去跑正式請求，數據與行為都對不上。
+ *
+ * 沒設定正式 ID 時退回測試單元而不是報錯，是因為報錯會讓廣告變成遊戲的
+ * 單點故障；但退回時一定要誠實把 isTesting 標成 true，否則就會出現
+ * 「安靜地帶著測試單元上架、零收益也零錯誤訊息」這種最難發現的狀況。
  */
-export const useTestAds =
-  import.meta.env.DEV || env.VITE_ADMOB_FORCE_TEST === 'true';
+export function adUnit(slot: Slot): { readonly id: string; readonly isTesting: boolean } {
+  const test = TEST[platform()][slot];
+  if (forced) return { id: test, isTesting: true };
 
-export function adUnitId(slot: Slot): string {
-  const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
-  if (useTestAds) return TEST[platform][slot];
+  const key = `VITE_ADMOB_${platform().toUpperCase()}_${slot.toUpperCase()}`;
+  const real = env[key]?.trim();
+  return real ? { id: real, isTesting: false } : { id: test, isTesting: true };
+}
 
-  const key = `VITE_ADMOB_${platform.toUpperCase()}_${slot.toUpperCase()}`;
-  return env[key] || TEST[platform][slot];
+/**
+ * 這次建置是不是完全沒有正式 ID —— 三個版位都退回測試單元。
+ * 用來決定 SDK 的 initializeForTesting，也讓「忘了填 ID」在 log 裡看得見。
+ */
+export function allTestAds(): boolean {
+  return (['banner', 'interstitial', 'rewarded'] as const).every((s) => adUnit(s).isTesting);
 }

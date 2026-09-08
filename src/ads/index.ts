@@ -18,7 +18,7 @@ import {
   type AdMobRewardItem,
 } from '@capacitor-community/admob';
 
-import { adUnitId, useTestAds } from './units.ts';
+import { adUnit, allTestAds } from './units.ts';
 
 const native = () => Capacitor.isNativePlatform();
 
@@ -39,7 +39,7 @@ export async function initAds(): Promise<void> {
   // 讓 CSS 知道自己在原生殼裡，好為底部橫幅留出空間（見 app.css .native）
   document.documentElement.classList.add('native');
   try {
-    await AdMob.initialize({ initializeForTesting: useTestAds });
+    await AdMob.initialize({ initializeForTesting: allTestAds() });
 
     const consent = await AdMob.requestConsentInfo();
     if (consent.isConsentFormAvailable && consent.status === 'REQUIRED') {
@@ -63,13 +63,14 @@ export async function initAds(): Promise<void> {
 export async function showBanner(): Promise<void> {
   if (!native()) return;
   try {
+    const banner = adUnit('banner');
     await AdMob.showBanner({
-      adId: adUnitId('banner'),
+      adId: banner.id,
       // 自適應橫幅會依裝置寬度挑高度，比固定 320x50 在大螢幕上不會留白
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.BOTTOM_CENTER,
       margin: 0,
-      isTesting: useTestAds,
+      isTesting: banner.isTesting,
     });
   } catch (err) {
     console.warn('[ads] 橫幅載入失敗', err);
@@ -92,7 +93,8 @@ export async function hideBanner(): Promise<void> {
 async function prepareInterstitial(): Promise<void> {
   if (!native() || interstitialReady) return;
   try {
-    await AdMob.prepareInterstitial({ adId: adUnitId('interstitial'), isTesting: useTestAds });
+    const unit = adUnit('interstitial');
+    await AdMob.prepareInterstitial({ adId: unit.id, isTesting: unit.isTesting });
     interstitialReady = true;
   } catch (err) {
     console.warn('[ads] 插頁預載失敗', err);
@@ -126,7 +128,8 @@ export async function showInterstitial(): Promise<void> {
 async function prepareRewarded(): Promise<void> {
   if (!native() || rewardedReady) return;
   try {
-    await AdMob.prepareRewardVideoAd({ adId: adUnitId('rewarded'), isTesting: useTestAds });
+    const unit = adUnit('rewarded');
+    await AdMob.prepareRewardVideoAd({ adId: unit.id, isTesting: unit.isTesting });
     rewardedReady = true;
   } catch (err) {
     console.warn('[ads] 獎勵廣告預載失敗', err);
