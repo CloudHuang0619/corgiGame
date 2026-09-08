@@ -29,15 +29,39 @@ const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, '../src/core/levels.ts');
 
 /**
- * 重壓一角：兩個 7×7 疊 4 格深。
+ * 疊加型的難度坡度。
  *
- * 從幾種排法裡選它，是因為它是唯一還維持在 10×10 的疊加排法 —— 每格 38px，
- * 跟現在最大的盤面完全一樣，玩家不會覺得畫面突然變擠。14×14 的排法會讓
- * 每格掉到 27px，而放柯基是快速連點，目標變小會直接推高誤觸率。
+ * 一進第 50 關就給滿版的兩個 7×7 疊 4 格，等於同時丟出三件新事情：規則變了、
+ * 盤面變形了、重疊區還很深。分成三段，讓三個維度一起慢慢長 ——
+ * 複合邊長 8→9→10、共用格 4→9→16 —— 玩家有十一關的時間只需要消化「重疊」
+ * 這一個概念本身。
+ *
+ * 三段的每格邊長分別是 47.5 / 42.2 / 38.0 px，都在舒適範圍（現行最大的
+ * 單一 10×10 就是 38px）。再往上疊會掉到 27px，而放柯基是快速連點，
+ * 目標變小會直接推高誤觸率。
  */
-const BOARDS: readonly SubBoard[] = [
-  { row: 0, col: 0, size: 7 },
-  { row: 3, col: 3, size: 7 },
+interface Stage {
+  readonly from: number;
+  readonly to: number;
+  readonly boards: readonly SubBoard[];
+}
+
+const STAGES: readonly Stage[] = [
+  {
+    from: 50,
+    to: 60,
+    boards: [{ row: 0, col: 0, size: 5 }, { row: 3, col: 3, size: 5 }],
+  },
+  {
+    from: 61,
+    to: 75,
+    boards: [{ row: 0, col: 0, size: 6 }, { row: 3, col: 3, size: 6 }],
+  },
+  {
+    from: 76,
+    to: 100,
+    boards: [{ row: 0, col: 0, size: 7 }, { row: 3, col: 3, size: 7 }],
+  },
 ];
 
 function parseArgs(): { from: number; to: number; tries: number; seed: number } {
@@ -116,21 +140,25 @@ interface Candidate {
   readonly ratio: number;
 }
 
-function search(tries: number, baseSeed: number, need: number): Candidate[] {
+function search(
+  boards: readonly SubBoard[],
+  tries: number,
+  baseSeed: number,
+  need: number,
+): Candidate[] {
   const found: Candidate[] = [];
   const seenRegions = new Set<string>();
-  const started = Date.now();
 
   for (let i = 0; i < tries; i += 1) {
     const seed = baseSeed + i * 7919;
-    const made = generateComposite(0, BOARDS, seed, Technique.Advanced, 30);
+    const made = generateComposite(0, boards, seed, Technique.Advanced, 30);
     if (!made) continue;
 
     const key = made.regions.join('|');
     if (seenRegions.has(key)) continue;
     seenRegions.add(key);
 
-    const shape = shapeOf(BOARDS, made.regions);
+    const shape = shapeOf(boards, made.regions);
     const ratio = analyseOn(shape).steps.length / shape.corgiCount;
     if (ratio < 0.3) continue;
 
@@ -141,18 +169,13 @@ function search(tries: number, baseSeed: number, need: number): Candidate[] {
         size: made.size,
         regions: made.regions,
         solution: [],
-        boards: [...BOARDS],
+        boards: [...boards],
         solutionCells: [...made.solutionCells],
       },
     });
-
-    if (i % 4000 === 0 && i > 0) {
-      const secs = ((Date.now() - started) / 1000).toFixed(0);
-      console.error(`  搜尋 ${i}/${tries}… 已收集 ${found.length} 張（${secs}s）`);
-    }
   }
 
-  // 可推導比例高的優先 —— 現有後段關卡有 82% 連第一步都推不出來，
+  // 可推導比例高的優先 —— 被換掉的那批有 82% 連第一步都推不出來，
   // 這一批至少要比那個好，不然換了也只是換一種猜法
   found.sort((a, b) => b.ratio - a.ratio);
   return found.slice(0, need);
@@ -160,7 +183,6 @@ function search(tries: number, baseSeed: number, need: number): Candidate[] {
 
 function main(): void {
   const { from, to, tries, seed } = parseArgs();
-  const need = to - from + 1;
 
   // 自我檢查：不能動到指定區間以外的任何一關
   const current = readFileSync(OUT, 'utf8').replace(/\r\n/g, '\n');
@@ -170,16 +192,32 @@ function main(): void {
   }
   console.error('自我檢查通過：序列化結果與現有檔案逐字相同');
 
-  console.error(`搜尋疊加型盤面，目標 ${need} 張，最多 ${tries} 次…`);
-  const picked = search(tries, seed, need);
-  if (picked.length < need) {
-    console.error(`只找到 ${picked.length} 張，不足 ${need} 張。請提高 --tries。`);
-    process.exit(1);
+  const byLevel = new Map<number, Candidate>();
+  for (const stage of STAGES) {
+    const lo = Math.max(stage.from, from);
+    const hi = Math.min(stage.to, to);
+    if (lo > hi) continue;
+    const want = hi - lo + 1;
+    const label = `${stage.boards.length} 個 ${stage.boards[0]!.size}×${stage.boards[0]!.size}`;
+    console.error(`第 ${lo}–${hi} 關（${label}）搜尋 ${want} 張，最多 ${tries} 次…`);
+    const picked = search(stage.boards, tries, seed + stage.from * 104729, want);
+    if (picked.length < want) {
+      console.error(`  只找到 ${picked.length} 張，不足 ${want} 張。請提高 --tries。`);
+      process.exit(1);
+    }
+    const ratios = picked.map((c) => c.ratio);
+    const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    console.error(
+      `  可推導比例 最低 ${(Math.min(...ratios) * 100).toFixed(0)}%`
+      + ` / 平均 ${(avg * 100).toFixed(0)}%`
+      + ` / 最高 ${(Math.max(...ratios) * 100).toFixed(0)}%`,
+    );
+    picked.forEach((c, i) => byLevel.set(lo + i, c));
   }
 
   const next = LEVELS.map((lv) => {
-    if (lv.level < from || lv.level > to) return lv;
-    const c = picked[lv.level - from]!;
+    const c = byLevel.get(lv.level);
+    if (!c) return lv;
     return { ...c.puzzle, level: lv.level };
   });
 
@@ -192,12 +230,7 @@ function main(): void {
 
   writeFileSync(OUT, serialise(next), 'utf8');
 
-  const ratios = picked.map((c) => c.ratio);
-  const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
   console.error(`完成：第 ${from}–${to} 關換成疊加型`);
-  console.error(`  可推導比例 最低 ${(Math.min(...ratios) * 100).toFixed(0)}%`
-    + ` / 平均 ${(avg * 100).toFixed(0)}%`
-    + ` / 最高 ${(Math.max(...ratios) * 100).toFixed(0)}%`);
 }
 
 main();
