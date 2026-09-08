@@ -38,24 +38,46 @@ export async function initAds(): Promise<void> {
   if (!native() || ready) return;
   // 讓 CSS 知道自己在原生殼裡，好為底部橫幅留出空間（見 app.css .native）
   document.documentElement.classList.add('native');
+
   try {
     await AdMob.initialize({ initializeForTesting: allTestAds() });
+  } catch (err) {
+    // 這一步失敗才是真的沒救，後面每個呼叫都會跟著失敗
+    console.warn('[ads] SDK 初始化失敗，本次遊玩不顯示廣告', err);
+    return;
+  }
 
+  /*
+   * 同意流程與追蹤授權各自獨立 try，失敗都不中斷後面的預載。
+   *
+   * 這是實機測到的：AdMob 後台還沒建立同意聲明訊息時，showConsentForm()
+   * 會丟 "Publisher misconfiguration: no form(s) configured"。原本三步包在
+   * 同一個 try 裡，那個例外會讓 prepareRewarded() 整個跳過，結果「看廣告
+   * 換骨頭」的按鈕永遠不出現——一個後台設定的疏漏，讓一整個功能無聲消失。
+   *
+   * 同意流程沒跑成不代表不能放廣告，只代表不能放個人化廣告；SDK 在沒有
+   * 同意資訊時本來就會退回非個人化廣告。把它降級成一則警告才符合實情。
+   */
+  try {
     const consent = await AdMob.requestConsentInfo();
     if (consent.isConsentFormAvailable && consent.status === 'REQUIRED') {
       await AdMob.showConsentForm();
     }
+  } catch (err) {
+    console.warn('[ads] 同意流程未完成，改以非個人化廣告繼續', err);
+  }
 
+  try {
     // iOS 的 ATT 對話框。Android 沒有這個概念，plugin 會直接回 authorized。
     await AdMob.requestTrackingAuthorization();
-
-    ready = true;
-    // 預先備好，玩家真的通關時才不會盯著載入轉圈
-    void prepareInterstitial();
-    void prepareRewarded();
   } catch (err) {
-    console.warn('[ads] 初始化失敗，本次遊玩不顯示廣告', err);
+    console.warn('[ads] 追蹤授權查詢失敗', err);
   }
+
+  ready = true;
+  // 預先備好，玩家真的通關時才不會盯著載入轉圈
+  void prepareInterstitial();
+  void prepareRewarded();
 }
 
 /* ---------- 橫幅：遊戲主畫面底部 ---------- */
@@ -136,9 +158,20 @@ async function prepareRewarded(): Promise<void> {
   }
 }
 
-/** 獎勵廣告目前是否播得動——用來決定 UI 上那顆按鈕要不要出現 */
-export function isRewardedReady(): boolean {
-  return native() && rewardedReady;
+/**
+ * 確認獎勵廣告播不播得動，必要時當場載一則。
+ *
+ * 不用同步的旗標快照，是因為那個旗標只在初始化成功時才會被設起來。實機
+ * 測到過：初始化中途因為別的原因失敗，旗標永遠是 false，「看廣告換骨頭」
+ * 的按鈕就再也不會出現——即使 showRewarded() 自己有臨時載入的退路。
+ *
+ * 讓呼叫端在需要的當下問一次、必要時現載，UI 才不會被一個無關的失敗
+ * 永久關掉一整個功能。
+ */
+export async function ensureRewarded(): Promise<boolean> {
+  if (!native()) return false;
+  if (!rewardedReady) await prepareRewarded();
+  return rewardedReady;
 }
 
 /**

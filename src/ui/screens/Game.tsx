@@ -35,7 +35,7 @@ import type { Coord, RuleId } from '../../core/types.ts';
 import type { Translate } from '../../i18n/index.ts';
 import {
   hideBanner,
-  isRewardedReady,
+  ensureRewarded,
   showBanner,
   showInterstitial,
   showRewarded,
@@ -189,12 +189,23 @@ export function Game({
   }, [game]);
 
   /*
-   * 廣告備妥與否是 plugin 那邊的狀態，不會自己觸發重繪，所以在對話框
-   * 打開的當下取一次快照。開著的時候不再更新——按鈕中途冒出來或消失，
-   * 比少一次機會更讓人困惑。
+   * 對話框打開時才問廣告在不在，問不到就當場載一則。
+   *
+   * 用非同步詢問而不是讀一個同步旗標，是因為預載可能根本沒發生過（初始化
+   * 中途失敗就會這樣）。按鈕晚一秒出現，比一整個功能無聲消失好得多。
    */
   useEffect(() => {
-    if (dialog === 'fail') setRewardOffered(isRewardedReady() && !revived);
+    if (dialog !== 'fail') {
+      setRewardOffered(false);
+      return;
+    }
+    let alive = true;
+    void ensureRewarded().then((ok) => {
+      if (alive) setRewardOffered(ok && !revived);
+    });
+    return () => {
+      alive = false;
+    };
   }, [dialog, revived]);
 
   /* 一關只能續一次，否則三根骨頭的代價就形同虛設 */
