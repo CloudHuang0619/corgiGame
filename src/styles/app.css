@@ -1432,3 +1432,13 @@ html.native .game {
   text-align: left;
   line-height: 1.65;
 }
+
+/* 選關卡清單裡標出疊加型 —— 它的尺寸跟單一盤面一樣，光看數字分不出來 */
+.level-chip-overlap {
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85em;
+}

@@ -52,6 +52,11 @@ export function LevelPickerDialog({
               <span className="level-chip-number">{puzzle.level}</span>
               <span className="level-chip-meta">
                 {puzzle.size}×{puzzle.size}
+                {/*
+                  * 疊加型也是 10×10，光看尺寸分不出來。這是測試工具，
+                  * 一眼要能挑到想驗的那一種。
+                  */}
+                {(puzzle.boards?.length ?? 1) > 1 && <span className="level-chip-overlap">疊</span>}
               </span>
             </button>
           );
