@@ -385,8 +385,18 @@ button:disabled {
 
 .board {
   position: relative; /* 子盤面外框（.subboards）要以此為定位基準 */
+  /*
+   * 縫寬抽成變數，子盤面外框要靠它算出「落在縫的正中央」的位移。
+   *
+   * 用 cqi 而不是 %，是因為百分比在不同屬性上的解析基準不同：gap 的 1.4%
+   * 是盤面寬，但 grid item 的 margin 百分比解析的是「該項目自己的網格區域」
+   * 寬度。同樣寫 1.4% 會得到兩個不同的實際值（實測 4.58px 對 2.81px），
+   * 外框就對不準。cqi 一律以容器內寬為基準，兩處才會是同一個數。
+   */
+  container-type: inline-size;
+  --board-gap: 1.4cqi;
   display: grid;
-  gap: 1.4%;
+  gap: var(--board-gap);
   width: 100%;
   aspect-ratio: 1;
 }
@@ -1397,7 +1407,7 @@ html.native .game {
   position: absolute;
   inset: 0;
   display: grid;
-  gap: 1.4%;
+  gap: var(--board-gap);
   pointer-events: none;
   z-index: 2;
 }
@@ -1406,8 +1416,14 @@ html.native .game {
  * 外框要壓在彩色格子上還看得清楚，所以用深色實線加一圈外側白光 ——
  * 單靠深色線在深綠、深紫那些區域上會糊掉，單靠白線在淺色區又不見。
  * 兩層一起用，任何底色都撐得住。
+ *
+ * 負邊界讓框往外擴半個縫寬。不擴的話框線正好壓在格子外緣上，看起來像貼著
+ * 格子的邊，而不是「這幾格屬於同一個盤面」的圈選；落在縫的正中央才讀得出
+ * 是分隔線。百分比邊界解析的基準是容器寬，跟 gap 同一個基準，所以兩者會
+ * 對齊；盤面是正方形，橫縱也因此一致。
  */
 .subboard {
+  margin: calc(var(--board-gap) / -2);
   border: 3px solid rgba(59, 43, 34, 0.75);
   border-radius: calc(var(--radius) * 0.55);
   box-shadow:
