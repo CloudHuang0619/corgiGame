@@ -1,0 +1,101 @@
+# 建置驗證
+#
+# 分成兩個 job，因為兩者的成本差了一個數量級：
+#
+#   web  在 ubuntu 上跑，幾十秒就結束，每次 push 都跑。
+#   ios  必須在 macOS 上跑 —— Xcode 只存在於 macOS，Linux 沒有任何辦法編出
+#        iOS 執行檔。公開 repo 用標準 runner 免費（含 macOS）；如果哪天這個
+#        repo 轉私有，macOS 的分鐘數是 10 倍計費，那時要改成只在 tag 上跑。
+#
+# iOS 這一段建的是**模擬器版、不簽章**。這樣才能在沒有 Apple 開發者帳號
+# （99 美元／年）的情況下驗證「程式碼編得過、原生相依裝得起來」。要裝到
+# 實機或送 TestFlight 就一定要付費帳號與憑證，那不是 CI 能繞過的。
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: 型別與網頁打包
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: 型別檢查
+        run: npm run typecheck
+
+      - name: 網頁打包
+        run: npm run build
+
+      # 關卡表是生成出來的，而且遊戲的核心保證是「每一關都有唯一解」。
+      # 這個檢查很便宜，卻能擋掉最難用眼睛看出來的那種錯。
+      - name: 驗證關卡唯一解
+        run: npm run verify
+
+  ios:
+    name: iOS（模擬器，不簽章）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # ios/ 沒有進版控，每次都重新產生。這樣 CI 驗證的是「從乾淨的 repo
+      # 能不能長出可編譯的 iOS 專案」，而不是某一份陳年的 scaffold。
+      - name: 產生 iOS 專案
+        run: npx cap add ios
+
+      - name: 同步網頁資源與外掛
+        run: npx cap sync ios
+
+      # AdMob 的 App ID 少了會讓 App 一啟動就 crash，不是廣告不出現而已。
+      # ATT 的說明文字在 iOS 14+ 沒有的話，requestTrackingAuthorization
+      # 會直接被系統拒絕。這裡填的是 Google 官方測試 App ID。
+      - name: 寫入 AdMob 設定
+        run: |
+          PLIST=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c \
+            "Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511" "$PLIST"
+          /usr/libexec/PlistBuddy -c \
+            "Add :NSUserTrackingUsageDescription string 這項權限用來提供與你更相關的廣告。拒絕不影響遊戲。" "$PLIST"
+
+      # 指定 iphonesimulator 並關掉簽章，是為了完全避開憑證。
+      # 用 -workspace 而不是 -project：CocoaPods 產生的 workspace 才含有
+      # Pods 專案，直接開 .xcodeproj 會找不到 Capacitor 與 Ads 的 framework。
+      - name: 編譯
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 保留建置紀錄
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: ~/Library/Logs/gym
+          if-no-files-found: ignore

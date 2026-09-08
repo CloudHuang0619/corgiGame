@@ -29,3 +29,6 @@ android/keystore.properties
 # 正式廣告單元 ID
 .env
 .env.production
+
+# Capacitor iOS（CI 每次重新產生，不進版控）
+ios/
