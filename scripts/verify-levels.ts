@@ -10,6 +10,8 @@
 import { LEVELS } from '../src/core/levels.ts';
 import { analyse, countSolutions } from '../src/core/solver.ts';
 import { getLevelSpec } from '../src/core/generator.ts';
+import { buildShape, VOID } from '../src/core/shape.ts';
+import { analyseOn, findSolutionsOn } from '../src/core/solver-general.ts';
 import type { Puzzle, RegionGrid } from '../src/core/types.ts';
 
 let failures = 0;
@@ -45,7 +47,62 @@ function isContiguous(regions: RegionGrid, letter: string): boolean {
   return seen.size === cells.length;
 }
 
+/**
+ * 疊加型的驗證。
+ *
+ * 不能沿用單一盤面那套：複合圖的區域數不等於邊長，解也不是排列，
+ * 「相鄰列的欄差 >= 2」更是不成立（那條規則本來就是排列表示法的副產品）。
+ * 改成直接用通用求解器與形狀模型驗，跟遊戲執行時走的是同一條路。
+ */
+function verifyComposite(puzzle: Puzzle, index: number): void {
+  const n = puzzle.size;
+  if (puzzle.level !== index + 1) fail(puzzle, `編號 ${puzzle.level} 與位置 ${index + 1} 不符`);
+  if (puzzle.regions.length !== n) fail(puzzle, `regions 只有 ${puzzle.regions.length} 列`);
+  if (puzzle.regions.some((row) => row.length !== n)) fail(puzzle, 'regions 有列長度不對');
+
+  const cells = puzzle.solutionCells;
+  if (!cells || cells.length === 0) { fail(puzzle, '缺少 solutionCells'); return; }
+
+  const letters = new Set<string>();
+  for (const row of puzzle.regions) for (const ch of row) if (ch !== VOID) letters.add(ch);
+  if (letters.size !== cells.length) {
+    fail(puzzle, `區域數 ${letters.size} 與柯基數 ${cells.length} 不符`);
+  }
+  for (const letter of letters) {
+    if (!isContiguous(puzzle.regions, letter)) fail(puzzle, `區域 ${letter} 不連通`);
+  }
+
+  const shape = buildShape(puzzle.boards!, puzzle.regions);
+
+  // 空洞不能有柯基，柯基之間不能相鄰
+  for (const idx of cells) {
+    if (!shape.present[idx]) fail(puzzle, `解答落在空洞 ${idx}`);
+    for (const nb of shape.neighbours[idx]!) {
+      if (cells.includes(nb)) fail(puzzle, `解答有兩隻柯基相鄰（${idx} 與 ${nb}）`);
+    }
+  }
+  // 每個群組恰好一隻
+  shape.groups.forEach((g, gi) => {
+    const hit = g.filter((c) => cells.includes(c)).length;
+    if (hit !== 1) fail(puzzle, `第 ${gi} 個群組（${shape.groupKinds[gi]}）有 ${hit} 隻柯基`);
+  });
+
+  const found = findSolutionsOn(shape, 2);
+  if (found.length !== 1) fail(puzzle, found.length === 0 ? '無解' : '不只一組解');
+
+  // 疊加關卡落在第 17 關之後，難度曲線要求 Advanced
+  const tech = analyseOn(shape).technique;
+  if (tech !== getLevelSpec(puzzle.level).technique) {
+    fail(puzzle, `難度等級 ${tech}，關卡曲線要求 ${getLevelSpec(puzzle.level).technique}`);
+  }
+}
+
 function verify(puzzle: Puzzle, index: number): void {
+  if (puzzle.boards && puzzle.boards.length > 1) {
+    verifyComposite(puzzle, index);
+    return;
+  }
+
   const n = puzzle.size;
   const spec = getLevelSpec(puzzle.level);
 

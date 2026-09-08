@@ -21,6 +21,7 @@ import {
   key,
   markHintUsed,
   MAX_LIVES,
+  corgiTarget,
   restart as restartGame,
   revealSolution,
   revive,
@@ -49,6 +50,7 @@ import { RuleChips } from '../RuleChips.tsx';
 import { ClearDialog } from '../dialogs/ClearDialog.tsx';
 import { FailDialog } from '../dialogs/FailDialog.tsx';
 import { LevelPickerDialog } from '../dialogs/LevelPickerDialog.tsx';
+import { OverlapDialog } from '../dialogs/OverlapDialog.tsx';
 import { SettingsDialog } from '../dialogs/SettingsDialog.tsx';
 
 interface GameProps {
@@ -62,7 +64,7 @@ interface GameProps {
   readonly onGoToLevel: (level: number) => void;
 }
 
-type DialogName = 'settings' | 'clear' | 'fail' | 'levels' | null;
+type DialogName = 'settings' | 'clear' | 'fail' | 'levels' | 'overlap' | null;
 
 /** 每幾關播一次通關插頁廣告 */
 const INTERSTITIAL_EVERY = 3;
@@ -123,6 +125,18 @@ export function Game({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [game]);
+
+  /*
+   * 第一次遇到疊加型盤面時說明一次。
+   *
+   * 規則在這裡實質上變了 —— 「每行每列各一隻」變成「每個子盤面各行各列
+   * 一隻」—— 不講的話玩家只會覺得判定莫名其妙壞掉，而這遊戲放錯要扣骨頭，
+   * 誤會的代價是真的。
+   */
+  const isComposite = (game.puzzle.boards?.length ?? 1) > 1;
+  useEffect(() => {
+    if (isComposite && !settings.seenOverlapIntro) setDialog('overlap');
+  }, [isComposite, settings.seenOverlapIntro]);
 
   /*
    * 底部橫幅只跟著遊戲畫面的生命週期走，不是全域掛著的。
@@ -353,7 +367,7 @@ export function Game({
         <div className="pill progress-pill">
           <Corgi className="pill-corgi" />
           <span>
-            <b>{game.catsPlaced}</b>/{puzzle.size}
+            <b>{game.catsPlaced}</b>/{corgiTarget(puzzle)}
           </span>
         </div>
         <div
@@ -370,7 +384,7 @@ export function Game({
         t={t}
         highlight={violated}
         pulse={entering}
-        composite={(game.puzzle.boards?.length ?? 1) > 1}
+        composite={isComposite}
       />
 
       <div className="board-frame">
@@ -479,6 +493,15 @@ export function Game({
         onClose={() => {
           setDialog(null);
           onExit();
+        }}
+      />
+
+      <OverlapDialog
+        open={dialog === 'overlap'}
+        t={t}
+        onClose={() => {
+          setDialog(null);
+          onSettingsChange({ ...settings, seenOverlapIntro: true });
         }}
       />
 

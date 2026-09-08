@@ -1402,8 +1402,33 @@ html.native .game {
   z-index: 2;
 }
 
+/*
+ * 外框要壓在彩色格子上還看得清楚，所以用深色實線加一圈外側白光 ——
+ * 單靠深色線在深綠、深紫那些區域上會糊掉，單靠白線在淺色區又不見。
+ * 兩層一起用，任何底色都撐得住。
+ */
 .subboard {
-  border: 2.5px solid var(--ink);
-  border-radius: calc(var(--radius) * 0.6);
-  opacity: 0.28;
+  border: 3px solid rgba(59, 43, 34, 0.75);
+  border-radius: calc(var(--radius) * 0.55);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+.overlap-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.overlap-mini {
+  width: 148px;
+  height: auto;
+}
+
+.overlap-body {
+  margin: 0;
+  text-align: left;
+  line-height: 1.65;
 }

@@ -10,16 +10,20 @@
         android:theme="@style/AppTheme">
 
         <!--
-            AdMob 應用程式 ID。這一項是必填的：少了它 Google Mobile Ads SDK
-            會在啟動時直接丟例外讓 App 當掉，不是「廣告不出現」而已。
+            AdMob 應用程式 ID（Android 版的 Corgidoku）。
 
-            目前填的是 Google 官方的測試 App ID，任何人都能用。上架前換成
-            AdMob 後台那一組（格式 ca-app-pub-XXXX~YYYY，波浪號不是斜線；
-            斜線那種是廣告單元 ID，填錯一樣會當）。
+            這一項是必填的：少了它 Google Mobile Ads SDK 會在啟動時直接丟
+            例外讓 App 當掉，不是「廣告不出現」而已。
+
+            注意分隔符號是波浪號 ~，那是應用程式 ID；斜線 / 那種是廣告單元
+            ID，填錯一樣會當。iOS 是另一組 ID，填在 Info.plist 的
+            GADApplicationIdentifier，兩者不共用。
+
+            這串不是機密——它會編進每一個 APK 裡，任何人解包都看得到。
         -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-5561064840285913~1435744822" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"

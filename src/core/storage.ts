@@ -135,9 +135,18 @@ export interface Settings {
   readonly locale: string;
   /** 測試工具：柯基動畫放慢三倍，用來逐格檢查對齊 */
   readonly slowMotion: boolean;
+  /**
+   * 疊加型的說明看過了沒。
+   *
+   * 放在 settings 而不是 profile，是因為它跟成績無關，而且 profile 的
+   * 每一次寫入都伴隨通關結算；這個旗標只會翻一次，跟音效開關同一種性質。
+   * 缺這一欄時（既有玩家的存檔）預設 false，所以她走到第 50 關還是會看到。
+   */
+  readonly seenOverlapIntro: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  seenOverlapIntro: false,
   music: true,
   sfx: true,
   voice: true,
