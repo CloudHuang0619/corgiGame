@@ -377,6 +377,15 @@ button:disabled {
 
 .board-frame {
   position: relative;
+  /*
+   * 容器要設在這裡，不能設在 .board 上。cqi 解析的是「最近的祖先容器」，
+   * 元素自己的 container-type 不作用於自己的屬性 —— 設在 .board 上的話，
+   * .board 自己的 gap 往上找不到容器，會退回以視窗寬為基準，視窗一寬縫就爆開。
+   *
+   * 這張卡的內容寬（扣掉 padding）正好等於盤面寬，所以 .board 的 gap 與
+   * .subboard 的負邊界都會以盤面寬為基準，兩者一致。
+   */
+  container-type: inline-size;
   padding: 8px;
   background: var(--card);
   border-radius: var(--radius);
@@ -390,10 +399,9 @@ button:disabled {
    *
    * 用 cqi 而不是 %，是因為百分比在不同屬性上的解析基準不同：gap 的 1.4%
    * 是盤面寬，但 grid item 的 margin 百分比解析的是「該項目自己的網格區域」
-   * 寬度。同樣寫 1.4% 會得到兩個不同的實際值（實測 4.58px 對 2.81px），
-   * 外框就對不準。cqi 一律以容器內寬為基準，兩處才會是同一個數。
+   * 寬度。同樣寫 1.4% 會得到兩個不同的實際值，外框就對不準。
+   * cqi 一律以容器內寬為基準（容器設在 .board-frame），兩處才是同一個數。
    */
-  container-type: inline-size;
   --board-gap: 1.4cqi;
   display: grid;
   gap: var(--board-gap);
