@@ -14,6 +14,8 @@
 | 正式 AdMob ID | ❌ 目前全是 Google 測試單元 |
 | Play Console 帳號 | ❌ 需自行申請（一次性 25 美元） |
 | 商店素材、隱私權政策 | ❌ 未準備 |
+| iOS 編譯（CI） | ⚙️ GitHub Actions，`macos-latest`，產出未簽章 IPA |
+| iOS 簽章 | ❌ 需 Apple 開發者帳號（99 美元／年） |
 
 ## 建置環境
 
@@ -116,8 +118,65 @@ versionCode 2
 versionName "1.0.1"
 ```
 
+## iOS
+
+### CI 產出的是什麼
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) 的 `ios` job 在
+`macos-latest` 上建 arm64 實機版，產出 `Corgidoku-unsigned.ipa`，掛在該次執行的
+artifact 底下（保留 14 天）。
+
+**這顆 IPA 裝不上一般 iPhone。** iOS 拒絕執行未簽章的程式碼，這是系統層級的限制，
+不是設定漏了什麼。它的用途是證明實機架構編得過，以及當作重簽的起點。
+
+Linux 建不出 iOS，這點沒有變通方案：Xcode 只發行在 macOS，`xcodebuild`、iOS SDK、
+CocoaPods 的原生編譯全綁在那裡。AdMob 的 `Google-Mobile-Ads-SDK` 還是預編譯的
+xcframework，交叉編譯工具鏈更不可能吃下去。
+
+### 三條把它變成可安裝 App 的路
+
+| 你有什麼 | 做法 | 限制 |
+| --- | --- | --- |
+| 免費 Apple ID | 用 Sideloadly／AltStore 重簽這顆 IPA | **7 天到期**、最多 3 個 App、要有電腦 |
+| 開發者帳號 99 美元／年 | CI 加簽章 → TestFlight | 最多 100 台裝置測試，或 TestFlight 一萬人 |
+| 同上 | App Store 正式上架 | 需通過審查 |
+
+免費 Apple ID 那條適合「就只是想在自己手機上玩玩看」。七天後要重簽一次，不是 bug。
+
+### 要讓 CI 產出**已簽章**的 IPA
+
+需要三樣東西放進 GitHub secrets，然後把 workflow 的簽章步驟打開：
+
+1. **發佈憑證**（`.p12`）與它的密碼 —— 從 Keychain 匯出，base64 後存成 secret。
+2. **Provisioning profile**（`.mobileprovision`），同樣 base64。
+3. 匯出用的 `ExportOptions.plist`，指定 `method`（`app-store` 或 `ad-hoc`）與 team ID。
+
+流程是 `xcodebuild archive` 產生 `.xcarchive`，再 `xcodebuild -exportArchive` 匯出。
+目前的 workflow 刻意不走這條，是因為 `-exportArchive` 一定要有 provisioning profile，
+沒有帳號時整個 job 會失敗，連「編得過嗎」這個問題都問不到答案。
+
+### iOS 端的 AdMob 設定
+
+`src/ads/units.ts` 已經備好 iOS 的 ID 分支，會依 `Capacitor.getPlatform()` 自動選。
+原生那邊要在 `ios/App/App/Info.plist` 補三項（CI 目前只自動填前兩項的測試值）：
+
+| 鍵 | 用途 | 少了會怎樣 |
+| --- | --- | --- |
+| `GADApplicationIdentifier` | AdMob App ID | App 一啟動就 crash |
+| `NSUserTrackingUsageDescription` | ATT 對話框的說明文字 | `requestTrackingAuthorization` 被系統直接拒絕 |
+| `SKAdNetworkItems` | 廣告歸因用的網路識別碼清單 | 廣告照出，但填充率與單價明顯偏低 |
+
+`SKAdNetworkItems` 那份清單 Google 會更新，要從
+[AdMob 的說明文件](https://developers.google.com/admob/ios/quick-start)複製最新版，
+不要抄舊的。
+
+> `ios/` 不進版控，CI 每次 `npx cap add ios` 重新產生。這樣驗證的是「從乾淨的 repo
+> 能不能長出可編譯的 iOS 專案」，而不是某份陳年 scaffold。要在本機開發 iOS 就自己
+> 跑一次 `npx cap add ios`，那需要 macOS。
+
 ## 待辦
 
 - [ ] 應用程式圖示還是 Capacitor 的預設圖，要換成柯基。
 - [ ] `app-ads.txt`：有官網的話應該放一份，可以擋掉冒用你 App 名義的假流量。
-- [ ] iOS 版：`npx cap add ios` 需要 macOS 與 Xcode，`src/ads/units.ts` 已經備好 iOS 的 ID 分支。
+- [ ] iOS 的 `SKAdNetworkItems` 還沒填，會影響廣告填充率與單價。
+- [ ] CI 的簽章步驟還沒開，等有開發者帳號再說。
