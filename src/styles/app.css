@@ -375,6 +375,19 @@ button:disabled {
 
 /* 盤面 */
 
+/*
+ * 盤面卡片的底是一塊草地。
+ *
+ * 刻意不做成「疊加型的特例」—— 草只鋪在空洞裡的話，第 50 關會突然冒出草、
+ * 第 101 關又突然消失，那個閃現比沒有草更怪。改成整張卡片都是草地、格子鋪在
+ * 上面，於是「看得到多少草」由盤面形狀自己決定：疊加型從兩個 3×3 空洞露出一
+ * 大片，單一盤面只從格子之間 4.5px 的縫透出一點暖色紋理。同一條規則，沒有
+ * 特例，也沒有突兀的分界。
+ *
+ * 素材放在 src/assets 而不是 public，是因為 CSS 裡用不了 import.meta.env.BASE_URL；
+ * 交給 Vite 處理才會依 base 改寫路徑，Capacitor 的 file:// 與 Pages 的子路徑
+ * 才都找得到。
+ */
 .board-frame {
   position: relative;
   /*
@@ -387,12 +400,38 @@ button:disabled {
    */
   container-type: inline-size;
   padding: 8px;
-  background: var(--card);
+  /*
+   * 卡片外圈只留很淡的草地紋理。全強度時整個盤面會帶一層綠調，而 1–49 與
+   * 101–200 這 149 關跟草地的敘事其實無關，不該被染色。壓到兩成左右，讀起來
+   * 是「暖色的紙」而不是「一片草」。
+   *
+   * 疊在圖上的那層近白色漸層就是調光片。用漸層而不是 opacity，是因為 opacity
+   * 會把整個元素連同陰影一起變淡。
+   *
+   * 一條簡寫寫完，不要拆成 background-image + background：簡寫會把沒列到的
+   * 子屬性重設掉，拆開寫時只要順序一顛倒，圖就會被後面的 background 洗掉。
+   */
+  background:
+    linear-gradient(rgba(255, 255, 253, 0.82), rgba(255, 255, 253, 0.82)),
+    url('../assets/meadow.webp') center / 62% auto,
+    var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
 }
 
+/*
+ * 盤面本體給一塊實心底色。
+ *
+ * 沒有底色時，格子之間 4.5px 的縫會直接透出草地，彩色格子與草混在一起，
+ * 色區的邊界變得難讀 —— 而色區顏色是這遊戲的核心資訊通道。有了底色，
+ * 縫是乾淨的白線，格子邊界清清楚楚。
+ *
+ * 空洞格會在這塊底色上「挖回」草地（見 .cell.is-void），所以疊加型的
+ * 兩個 3×3 缺角仍然是草原，只有縫變乾淨。
+ */
 .board {
+  background: var(--card);
+  border-radius: calc(var(--radius) * 0.5);
   position: relative; /* 子盤面外框（.subboards）要以此為定位基準 */
   /*
    * 縫寬抽成變數，子盤面外框要靠它算出「落在縫的正中央」的位移。
@@ -1402,9 +1441,37 @@ html.native .game {
  * 會往前遞補，整個版面就錯位了 —— 但畫成完全透明，看起來就是盤面缺了一角。
  */
 .cell.is-void {
-  background: transparent !important;
+  /* 草地由下面的 .meadow-layer 整片鋪，這裡只要讓路 */
+  background: transparent;
   box-shadow: none;
   pointer-events: none;
+}
+
+/*
+ * 空洞區的草地，鋪在格子底下。
+ *
+ * 一個矩形鋪一整片，而不是每個空洞格各自貼圖 —— 後者會變成一塊塊圓角草磚，
+ * 讀起來是「九張小圖」而不是「一片草原」。用同規格的網格對齊，跟子盤面外框
+ * 同一招，這樣 .board 的 gap 改了也不會跑掉。
+ */
+.meadow-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: var(--board-gap);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.meadow-patch {
+  /*
+   * 上面那層淡白漸層讓草退到背景，不跟彩色格子搶。圓角比格子大一點，
+   * 讀起來是「一塊地」而不是「一個放大的格子」。
+   */
+  background:
+    linear-gradient(rgba(255, 255, 253, 0.38), rgba(255, 255, 253, 0.38)),
+    url('../assets/meadow.webp') center / 150% auto;
+  border-radius: calc(var(--radius) * 0.45);
 }
 
 /*

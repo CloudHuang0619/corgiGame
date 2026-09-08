@@ -9,7 +9,7 @@
  * 就沒有這個問題，而且順便支援拖曳標記。
  */
 
-import { memo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 
 import type { GameState } from '../core/game.ts';
 import { key } from '../core/game.ts';
@@ -45,6 +45,32 @@ export const Board = memo(function Board({
 }: BoardProps) {
   const { puzzle, board } = state;
   const size = puzzle.size;
+
+  /*
+   * 把空洞格合併成一組矩形。
+   *
+   * 逐列找出連續的空洞區段，再跟正上方欄位範圍相同的區段接起來。對目前的
+   * 疊加排法（右上、左下各一個方塊）會得到剛好兩個矩形；就算之後換成別的
+   * 排法，這個做法也不會壞掉，只是矩形數多一點。
+   */
+  const meadowRects = useMemo(() => {
+    const rects: { row: number; col: number; width: number; height: number }[] = [];
+    for (let r = 0; r < size; r += 1) {
+      let c = 0;
+      while (c < size) {
+        if (puzzle.regions[r]![c] !== '.') { c += 1; continue; }
+        let end = c;
+        while (end < size && puzzle.regions[r]![end] === '.') end += 1;
+        const above = rects.find(
+          (x) => x.row + x.height === r && x.col === c && x.width === end - c,
+        );
+        if (above) above.height += 1;
+        else rects.push({ row: r, col: c, width: end - c, height: 1 });
+        c = end;
+      }
+    }
+    return rects;
+  }, [puzzle.regions, size]);
 
   const pressed = useRef<{
     pointerId: number;
@@ -131,6 +157,35 @@ export const Board = memo(function Board({
       aria-label={`${size} 乘 ${size} 的盤面`}
       onPointerMove={handlePointerMove}
     >
+      {/*
+        * 空洞區的草地。
+        *
+        * 不讓每個空洞格自己貼圖 —— 那樣會看到一塊塊圓角草磚，讀起來是「九張
+        * 小圖」而不是「一片草地」。改成把相鄰的空洞合併成矩形，一個矩形鋪一
+        * 整片，缺角才會像盤面外面的草原。
+        */}
+      {meadowRects.length > 0 && (
+        <div
+          className="meadow-layer"
+          style={{
+            gridTemplateColumns: `repeat(${size}, 1fr)`,
+            gridTemplateRows: `repeat(${size}, 1fr)`,
+          }}
+          aria-hidden="true"
+        >
+          {meadowRects.map((r, i) => (
+            <div
+              key={`mv-${i}`}
+              className="meadow-patch"
+              style={{
+                gridRow: `${r.row + 1} / span ${r.height}`,
+                gridColumn: `${r.col + 1} / span ${r.width}`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/*
         * 疊加型的子盤面外框。用一層覆蓋在盤面上的同規格網格來畫，而不是把
         * 外框做成 grid item —— 後者會參與自動排版，把後面的格子擠位。

@@ -111,3 +111,30 @@ IDLE 第一格），並在提示詞加上：
 
 分開產的素材要用不帶 `--single` 的模式校正，那條路徑會嘗試跨 sheet 統一縮放，
 但只能逼近 —— 實測 START 與 IDLE 可以對齊，LOOP 因取景不同仍有約 11% 落差。
+
+
+## meadow.png — 盤面底下的草地
+
+疊加型盤面的兩個缺角會露出草地。素材是 `art/raw/meadow.png`（1254×1254），
+壓成 `src/assets/meadow.webp` 才進打包：
+
+```bash
+python -c "from PIL import Image; Image.open('art/raw/meadow.png').convert('RGB').resize((384,384), Image.LANCZOS).save('src/assets/meadow.webp','WEBP',quality=78,method=6)"
+```
+
+2731 KB → 21 KB。384px 就夠：缺角只有 3×3 格 ≈ 114px，三倍解析度也才 342px。
+
+放在 `src/assets/` 而不是 `public/`，是因為 CSS 裡用不了 `import.meta.env.BASE_URL`；
+交給 Vite 處理才會依 `base` 改寫路徑，Capacitor 的 `file://` 與 Pages 的子路徑才都找得到。
+
+### 產這類素材的提示詞要點
+
+三件事每次都要寫進去，否則模型會自作主張：
+
+1. `No text, no labels, no captions, no frames` —— 不然會多出「Frame 1」之類的裝飾字
+2. `seamless tileable` 要明講兩個方向怎麼接，只寫 seamless 常常還是給你有邊界的圖
+3. 要去背就寫 `flat solid magenta #FF00FF`，不要寫 transparent —— 模型不會輸出 alpha
+
+另外：**不要叫模型產逐格動畫**。它維持不了跨格一致性（花的位置會跳、葉片形狀會變），
+播起來是閃爍不是動畫。會擺動的東西產一張就好，動態交給 CSS transform —— 這個專案的
+星光與彩帶就是這樣做的。柯基之所以需要 40 格逐格圖，是因為跑步循環真的做不出來。
