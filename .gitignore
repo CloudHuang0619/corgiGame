@@ -35,3 +35,6 @@ ios/
 
 # 疊加型的試排稿，不進版控
 samurai-mockup.html
+
+# 除錯用的暫存腳本
+scratch-*.ts
