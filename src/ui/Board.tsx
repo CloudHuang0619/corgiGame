@@ -181,7 +181,43 @@ export const Board = memo(function Board({
                 gridRow: `${r.row + 1} / span ${r.height}`,
                 gridColumn: `${r.col + 1} / span ${r.width}`,
               }}
-            />
+            >
+              {/*
+                * 幾叢會擺動的草。
+                *
+                * 只有一張素材，擺動交給 CSS 繞根部旋轉 —— 圖像模型產不出跨格
+                * 一致的逐格動畫（葉片形狀與花的位置每格都會變，播起來是閃爍
+                * 不是搖擺），而草的擺動本來就只是旋轉。
+                *
+                * 每一叢的位置、大小、擺幅、延遲都由座標推導，不用亂數：亂數
+                * 會讓每次重繪都跳位置。延遲不同才不會整片草同步擺動 —— 那才是
+                * 最假的。這招跟結算的星光與彩帶是同一套（各自帶自訂屬性、
+                * 共用一組 keyframes）。
+                */}
+              {Array.from({ length: 3 }, (_, j) => {
+                const seed = (r.row * 31 + r.col) * 7 + j;
+                const frac = (n: number) => {
+                  const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453;
+                  return x - Math.floor(x);
+                };
+                return (
+                  <i
+                    key={`g-${j}`}
+                    className="grass"
+                    style={
+                      {
+                        '--gx': `${6 + frac(1) * 62}%`,
+                        // 散佈在草地裡，不要全排在下緣 —— 排成一列會像柵欄
+                        '--gy': `${frac(5) * 46}%`,
+                        '--gs': (0.85 + frac(2) * 0.5).toFixed(2),
+                        '--gd': `${(frac(3) * 3.4).toFixed(2)}s`,
+                        '--gsway': `${(3 + frac(4) * 4).toFixed(1)}deg`,
+                      } as React.CSSProperties
+                    }
+                  />
+                );
+              })}
+            </div>
           ))}
         </div>
       )}

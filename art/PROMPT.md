@@ -138,3 +138,28 @@ python -c "from PIL import Image; Image.open('art/raw/meadow.png').convert('RGB'
 另外：**不要叫模型產逐格動畫**。它維持不了跨格一致性（花的位置會跳、葉片形狀會變），
 播起來是閃爍不是動畫。會擺動的東西產一張就好，動態交給 CSS transform —— 這個專案的
 星光與彩帶就是這樣做的。柯基之所以需要 40 格逐格圖，是因為跑步循環真的做不出來。
+
+
+## grass.png — 會擺動的草叢
+
+`art/raw/grass.png`（1254×1254，**本來就帶 alpha**，不用去背）。內容只佔畫面 5.5%，
+而且根部剛好貼齊底邊 —— 正好可以繞著根部旋轉。裁掉空白再壓縮：
+
+```bash
+python -c "
+from PIL import Image
+import numpy as np
+im = Image.open('art/raw/grass.png').convert('RGBA')
+a = np.array(im); ys, xs = np.where(a[:,:,3] > 8)
+c = im.crop((xs.min(), ys.min(), xs.max()+1, ys.max()+1))
+h = 220; w = round(c.width * h / c.height)
+c.resize((w, h), Image.LANCZOS).save('src/assets/grass.webp','WEBP',quality=86,method=6,exact=True)
+"
+```
+
+299 KB → 23 KB。
+
+**擺動不是逐格圖，是 CSS 繞根部旋轉**（`transform-origin: bottom center`）。
+每一叢的位置、大小、擺幅、延遲都由座標推導 —— 不用亂數，亂數會讓每次重繪都跳位置 ——
+所以共用一組 keyframes 就能有幾十種不同的擺法，也不會整片草同步擺動。
+`transform-origin` 一定要在底部：設在中心會變成整叢平移，一眼就假。

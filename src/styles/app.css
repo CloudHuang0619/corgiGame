@@ -399,21 +399,30 @@ button:disabled {
    * .subboard 的負邊界都會以盤面寬為基準，兩者一致。
    */
   container-type: inline-size;
-  padding: 8px;
   /*
-   * 卡片外圈只留很淡的草地紋理。全強度時整個盤面會帶一層綠調，而 1–49 與
-   * 101–200 這 149 關跟草地的敘事其實無關，不該被染色。壓到兩成左右，讀起來
-   * 是「暖色的紙」而不是「一片草」。
+   * 比原本的 8px 寬一點。8px 的草只會讀成一條綠色描邊；11px 才看得出
+   * 是一圈草地，而盤面本身只縮 3px，格子大小幾乎沒差。
+   */
+  padding: 11px;
+  /*
+   * 卡片外圈就是草地 —— 盤面像一塊白色的板子擺在草原上。
    *
-   * 疊在圖上的那層近白色漸層就是調光片。用漸層而不是 opacity，是因為 opacity
+   * 這樣單一盤面（沒有缺角的那 149 關）也看得到草，不必為了草地的存在感
+   * 去犧牲格線的乾淨；草在外面，格子在裡面，兩件事互不干擾。
+   *
+   * 濃度與尺度都跟缺角的 .meadow-patch 對齊：同樣的 0.38 調光、同樣約 170px
+   * 的鋪圖尺寸。不對齊的話，疊加型的缺角與外圈會是兩種綠，看起來像兩塊
+   * 不同的草皮拼在一起。42% x 412px 的卡片寬 ≈ 173px，與缺角那邊相符。
+   *
+   * 疊在圖上的近白色漸層是調光片。用漸層而不是 opacity，是因為 opacity
    * 會把整個元素連同陰影一起變淡。
    *
    * 一條簡寫寫完，不要拆成 background-image + background：簡寫會把沒列到的
    * 子屬性重設掉，拆開寫時只要順序一顛倒，圖就會被後面的 background 洗掉。
    */
   background:
-    linear-gradient(rgba(255, 255, 253, 0.82), rgba(255, 255, 253, 0.82)),
-    url('../assets/meadow.webp') center / 62% auto,
+    linear-gradient(rgba(255, 255, 253, 0.38), rgba(255, 255, 253, 0.38)),
+    url('../assets/meadow.webp') center / 42% auto,
     var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
@@ -1472,6 +1481,51 @@ html.native .game {
     linear-gradient(rgba(255, 255, 253, 0.38), rgba(255, 255, 253, 0.38)),
     url('../assets/meadow.webp') center / 150% auto;
   border-radius: calc(var(--radius) * 0.45);
+  /* 缺角是 3x3 格 ≈ 114px，150% ≈ 171px，與外圈的 42% x 412px ≈ 173px 相符 */
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * 一叢會擺動的草。
+ *
+ * 只有一張素材，動態靠繞著根部旋轉 —— transform-origin 設在底部中央，
+ * 因為真實的草就是從根部彎的，設在中心會變成整叢平移，一眼就假。
+ *
+ * alternate 讓它來回擺而不是每個週期跳回原點。每一叢的擺幅與延遲由 Board
+ * 依座標算出來塞進自訂屬性，所以共用這一組 keyframes 就能有幾十種不同的擺法。
+ */
+.grass {
+  position: absolute;
+  bottom: var(--gy);
+  left: var(--gx);
+  /*
+   * 約半格寬。太小會讀成污漬、太大會蓋過草地本身的紋理；這個尺寸剛好看得出
+   * 是一叢草，又不會搶走缺角「一片草原」的整體感。
+   */
+  width: calc(46% * var(--gs));
+  aspect-ratio: 205 / 220;
+  background: url('../assets/grass.webp') center / contain no-repeat;
+  transform-origin: bottom center;
+  animation: grass-sway calc(2600ms * var(--sprite-speed, 1)) ease-in-out infinite alternate;
+  animation-delay: var(--gd);
+  will-change: transform;
+}
+
+@keyframes grass-sway {
+  from {
+    transform: rotate(calc(var(--gsway) * -1)) scaleY(1);
+  }
+  to {
+    /* 擺到另一邊時稍微壓低一點，像是被風壓著 —— 純旋轉會顯得像鐘擺 */
+    transform: rotate(var(--gsway)) scaleY(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grass {
+    animation: none;
+  }
 }
 
 /*
