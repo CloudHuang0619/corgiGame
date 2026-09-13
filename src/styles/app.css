@@ -451,6 +451,17 @@ button:disabled {
    * cqi 一律以容器內寬為基準（容器設在 .board-frame），兩處才是同一個數。
    */
   --board-gap: 1.4cqi;
+  /*
+   * 白底往外多留一圈，最外圈的格子才不會直接貼在草地上。
+   *
+   * 沒有這一圈時格子的圓角會緊挨著草地邊緣，讀起來像「格子被草切掉一半」；
+   * 留了之後盤面才像一塊完整的白板子擺在草上。寬度取縫寬的兩倍，這樣外圍
+   * 的留白跟格子之間的縫是同一種節奏，不會看起來像另外加的邊框。
+   */
+  --board-pad: calc(var(--board-gap) * 2);
+  padding: var(--board-pad);
+  /* 延伸到內距的草地由這裡裁掉，圓角才會跟著盤面走 */
+  overflow: hidden;
   display: grid;
   gap: var(--board-gap);
   width: 100%;
@@ -1465,7 +1476,11 @@ html.native .game {
  */
 .meadow-layer {
   position: absolute;
-  inset: 0;
+  /*
+   * 縮進 .board 的內距。絕對定位的容納區塊是「內距框」而不是內容框，
+   * inset: 0 會讓這一層比格線網格多出一圈，草地就跟缺角的位置對不上。
+   */
+  inset: var(--board-pad);
   display: grid;
   gap: var(--board-gap);
   pointer-events: none;
@@ -1534,7 +1549,8 @@ html.native .game {
  */
 .subboards {
   position: absolute;
-  inset: 0;
+  /* 同 .meadow-layer：要縮進內距才會跟格線對齊 */
+  inset: var(--board-pad);
   display: grid;
   gap: var(--board-gap);
   pointer-events: none;

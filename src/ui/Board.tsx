@@ -180,6 +180,20 @@ export const Board = memo(function Board({
               style={{
                 gridRow: `${r.row + 1} / span ${r.height}`,
                 gridColumn: `${r.col + 1} / span ${r.width}`,
+                /*
+                 * 貼到盤面邊界的那幾邊往外延伸，跟外圈的草地接起來。
+                 *
+                 * 不延伸的話，缺角會被白色內距圈成一扇窗，讀起來變成「白板子
+                 * 上開了兩個草地的洞」；缺角的意義是「不屬於任何盤面」，它本來
+                 * 就該跟外面是同一片草。多出來的部分由 .board 的 overflow
+                 * 裁掉，所以圓角仍然跟著盤面走。
+                 */
+                marginTop: r.row === 0 ? 'calc(var(--board-pad) * -1)' : undefined,
+                marginLeft: r.col === 0 ? 'calc(var(--board-pad) * -1)' : undefined,
+                marginRight:
+                  r.col + r.width === size ? 'calc(var(--board-pad) * -1)' : undefined,
+                marginBottom:
+                  r.row + r.height === size ? 'calc(var(--board-pad) * -1)' : undefined,
               }}
             >
               {/*
